@@ -1,7 +1,6 @@
 use rust_decimal::prelude::*;
 use chrono::NaiveDateTime;
 use crate::account::Position;
-use crate::utils::ib_message;
 use crate::ib_contract;
 use crate::utils::ib_message::decode;
 use crate::order;
@@ -54,7 +53,8 @@ pub enum IBFrame {
 
 impl IBFrame {
     pub fn parse (msg: &[u8]) -> Self {
-        let mut it = ib_message::iter_ib_message(&msg);
+        let utf8msg = String::from_utf8_lossy(msg);
+        let mut it = utf8msg.split("\0");
         let msg_type: Incoming = it.next().unwrap().parse().expect("Could not parse message type.");
         match msg_type {
             Incoming::AcctValue => {
@@ -238,7 +238,7 @@ impl IBFrame {
                     delta: decode(&mut it),
                     stock_range_lower: decode(&mut it),
                     stock_range_upper: decode(&mut it),
-                    display_size: decode(&mut it).unwrap(),
+                    display_size: decode(&mut it),
                     block_order: decode(&mut it).unwrap(),
                     sweep_to_fill: decode(&mut it).unwrap(),
                     all_or_none: decode(&mut it).unwrap(),
@@ -252,6 +252,7 @@ impl IBFrame {
                     volatility: decode(&mut it),
                     volatility_type: decode(&mut it),
                     delta_neutral_order_type: decode(&mut it),
+                    delta_neutral_aux_price: decode(&mut it),
                     ..Default::default()
                 };
                 if order.delta_neutral_order_type.is_some() {
@@ -290,7 +291,7 @@ impl IBFrame {
                 }
                 let order_combo_legs_count: Option<usize> = decode(&mut it);
                 if let Some(n) = order_combo_legs_count {
-                    let order_legs: Vec<Option<Decimal>> = Vec::with_capacity(n);
+                    let mut order_legs: Vec<Option<Decimal>> = Vec::with_capacity(n);
                     for i in 0..n {
                         order_legs.push(decode(&mut it));
                     }
@@ -298,7 +299,7 @@ impl IBFrame {
                 }
                 let smart_combo_routing_params_count: Option<usize> = decode(&mut it);
                 if let Some(n) = smart_combo_routing_params_count {
-                    let combo_params: Vec<(String,String)> = Vec::with_capacity(n);
+                    let mut combo_params: Vec<(String,String)> = Vec::with_capacity(n);
                     for i in 0..n {
                         combo_params.push((decode(&mut it).unwrap(), decode(&mut it).unwrap()));
                     }
@@ -318,8 +319,8 @@ impl IBFrame {
                     }
                 }
                 order.hedge_type = decode(&mut it);
-                if let Some(ht) = order.hedge_type {
-                    if ht != HedgeType::Undefined {
+                if let Some(ht) = &order.hedge_type {
+                    if *ht != HedgeType::Undefined {
                         order.hedge_param = decode(&mut it);
                     }
                 }
@@ -341,7 +342,7 @@ impl IBFrame {
                 if order.algo_strategy.is_some() {
                     let params_count: Option<usize> = decode(&mut it);
                     if let Some(n) = params_count {
-                        let params: Vec<(String,String)> = Vec::with_capacity(n);
+                        let mut params: Vec<(String,String)> = Vec::with_capacity(n);
                         for i in 0..n {
                             params.push((decode(&mut it).unwrap(),decode(&mut it).unwrap()));
                         }
@@ -378,13 +379,17 @@ impl IBFrame {
                     order.reference_exchange_id = decode(&mut it);
                 }
                 let conditions_count: Option<usize> = decode(&mut it);
-                if let Some(n) = conditions_count {
-                    order.conditions = Some(Vec::with_capacity(n));
-                    for i in 0..n {
-                        order.conditions.unwrap().push(decode(&mut it).unwrap());
-                    }
-                    order.conditions_ignore_rth = decode(&mut it).unwrap();
-                    order.conditions_cancel_order = decode(&mut it).unwrap();
+                if let Some(n) = conditions_count 
+                {
+                    if n > 0 {
+                        let mut conditions = Vec::with_capacity(n);
+                        for i in 0..n {
+                            conditions.push(decode(&mut it).unwrap());
+                        }
+                        order.conditions = Some(conditions);
+                        order.conditions_ignore_rth = decode(&mut it).unwrap();
+                        order.conditions_cancel_order = decode(&mut it).unwrap();
+                    }  
                 }
                 order.adjusted_order_type = decode(&mut it);
                 order.trigger_price = decode(&mut it);

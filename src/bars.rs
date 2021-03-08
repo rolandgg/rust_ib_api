@@ -6,7 +6,7 @@ pub struct Bar {
     pub close: f64,
     pub wap: f64,
     pub volume: i64,
-    pub count: usize
+    pub count: isize
 }
 
 pub struct BarSeries {

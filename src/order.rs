@@ -123,7 +123,7 @@ pub struct Order {
     pub parent_id: usize,
     pub block_order: bool,
     pub sweep_to_fill: bool,
-    pub display_size: i32,
+    pub display_size: Option<i32>,
     pub trigger_method: Option<TriggerMethod>,
     pub outside_rth: bool,
     pub hidden: bool,
@@ -346,8 +346,8 @@ impl Encodable for Order {
         code.push_str(&self.trigger_method.encode());
         code.push_str(&self.outside_rth.encode());
         code.push_str(&self.hidden.encode());
-        if let Some(sec) = self.contract.sec_type {
-            if sec == SecType::Combo {
+        if let Some(sec) = &self.contract.sec_type {
+            if *sec == SecType::Combo {
                 match &self.contract.combo_legs {
                     Some(legs) => {
                         code.push_str(&legs.len().encode());
@@ -399,6 +399,7 @@ impl Encodable for Order {
         code.push_str(&self.exempt_code.encode());
         code.push_str(&self.oca_type.encode());
         code.push_str(&self.rule_80A.encode());
+        code.push_str(&self.settling_firm.encode());
         code.push_str(&self.all_or_none.encode());
         code.push_str(&self.min_qty.encode());
         code.push_str(&self.percent_offset.encode());
@@ -454,7 +455,7 @@ impl Encodable for Order {
         code.push_str(&self.clearing_account.encode());
         code.push_str(&self.clearing_intent.encode());
         code.push_str(&self.not_held.encode());
-        match self.contract.delta_neutral_contract {
+        match &self.contract.delta_neutral_contract {
             Some(dn) => {
                 code.push_str("1\0");
                 code.push_str(&dn.con_id.encode());
@@ -465,7 +466,7 @@ impl Encodable for Order {
         };
         code.push_str(&self.algo_strategy.encode());
         if self.algo_strategy.is_some() {
-            match self.algo_params {
+            match &self.algo_params {
                 Some(params) => {
                     code.push_str(&params.len().encode());
                     for param in params {
@@ -491,7 +492,7 @@ impl Encodable for Order {
             code.push_str(&self.reference_exchange_id.encode());
         }
 
-        match self.conditions {
+        match &self.conditions {
             Some(conds) => {
                 code.push_str(&conds.len().encode());
                 for cond in conds {
@@ -512,7 +513,7 @@ impl Encodable for Order {
         code.push_str(&self.adjusted_trailing_amount.encode());
         code.push_str(&self.adjustable_trailing_unit.encode());
         code.push_str(&self.ext_operator.encode());
-        match self.soft_dollar_tier {
+        match &self.soft_dollar_tier {
             Some (tier) => {
                 code.push_str(&tier.name.encode());
                 code.push_str(&tier.val.encode());
@@ -526,6 +527,7 @@ impl Encodable for Order {
         code.push_str(&self.mifid_2_execution_trader.encode());
         code.push_str(&self.mifid_2_execution_algo.encode());
 
+        code.push_str(&self.dont_use_auto_price_for_hedge.encode());
         code.push_str(&self.is_oms_container.encode());
         code.push_str(&self.discretionary_up_to_limit_price.encode());
         code.push_str(&self.use_price_mgmt_algo.encode());

@@ -100,6 +100,24 @@ impl Contract {
         code.push_str(&self.trading_class.encode());
         code
     }
+
+    pub fn encode_for_hist_data(&self) -> String {
+        let mut code = String::new();
+        code.push_str(&self.con_id.encode());
+        code.push_str(&self.symbol.encode());
+        code.push_str(&self.sec_type.encode());
+        code.push_str(&self.last_trade_date_or_contract_month.encode());
+        code.push_str(&self.strike.encode());
+        code.push_str(&self.right.encode());
+        code.push_str(&self.multiplier.encode());
+        code.push_str(&self.exchange.encode());
+        code.push_str(&self.primary_exchange.encode());
+        code.push_str(&self.currency.encode());
+        code.push_str(&self.local_symbol.encode());
+        code.push_str(&self.trading_class.encode());
+        code.push_str(&self.include_expired.encode());
+        code
+    }
 }
 
 #[derive(Default,Debug)]

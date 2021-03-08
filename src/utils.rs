@@ -1,5 +1,6 @@
 pub mod ib_message {
-    use std::convert::TryInto;
+    use std::{convert::TryInto};
+    use std::{error::Error, fmt};
     use std::str;
     use rust_decimal::prelude::*;
     pub trait IBMessage {
@@ -19,50 +20,99 @@ pub mod ib_message {
             Ok(res)
         }
     }
+    #[derive(Debug)]
+    pub struct IBDecodeError;
+    impl Error for IBDecodeError {}
 
-    pub fn iter_ib_message(msg: &[u8]) -> std::str::Split<'_, &str> {
-        let string_view = str::from_utf8(msg).expect("No valid UTF-8");
-        string_view.split("\0")
+    impl fmt::Display for IBDecodeError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "Decoding value failed!")
+        }
+    }
+    pub trait Decodable
+    where
+    Self: std::str::FromStr + Sized,
+    {
+        fn decode_str(val: &str) -> Result<Self, IBDecodeError> {
+            match Self::from_str(val) {
+                Ok(val) => Ok(val),
+                Err(_) => Err(IBDecodeError{})
+            }
+        }
     }
 
+    impl Decodable for i32 {}
+    impl Decodable for u32 {}
+    impl Decodable for usize {}
+    impl Decodable for isize {}
+    impl Decodable for f64 {}
+    impl Decodable for Decimal {}
+    impl Decodable for String {}
+    impl Decodable for i64 {}
+
     
-    pub fn decode_enum<T>(stream: &mut std::str::Split<'_, &str>) -> T
-    where
-    T: std::str::FromStr,
-    <T as std::str::FromStr>::Err: std::fmt::Debug,
-    {
-            T::from_str(stream.next().unwrap()).unwrap()
+    impl Decodable for bool {
+        fn decode_str(val: &str) -> Result<Self, IBDecodeError> {
+            match val {
+                "" | "0" => Ok(false),
+                "1" => Ok(true),
+                &_ => Err(IBDecodeError{})
+            }
+        }
     }
 
     pub fn decode<T>(stream: &mut std::str::Split<'_, &str>) -> Option<T> 
     where
-    T: std::str::FromStr + Sized,
+    T: std::str::FromStr + Sized + Decodable,
     <T as std::str::FromStr>::Err: std::fmt::Debug,
     {
         let str_val = stream.next().unwrap();
         println!("{}", str_val);
         match str_val {
             "" | "1.7976931348623157E308" => return None,
-            _ => Some(T::from_str(str_val).unwrap())
+            _ => match T::decode_str(str_val) {
+                Ok(val) => return Some(val),
+                Err(_) => panic!{"{} could not be decoded", str_val}
+            }
         }
     }
 
-    pub trait Encodable {
+    pub trait Encodable 
+    {
         fn encode(&self) -> String;
     }
 
-    pub trait Nums {}
-    impl Nums for f64 {}
-    impl Nums for i32 {}
-    impl Nums for i64 {}
-    impl Nums for Decimal {}
-    impl Nums for usize {}
-
-    //encoding for numeric types
-    impl<T> Encodable for T
-    where
-        T: Nums + ToString
-    {
+    impl Encodable for f64 {
+        fn encode(&self) -> String {
+            self.to_string() +"\0"
+        }
+    }
+    impl Encodable for i32 {
+        fn encode(&self) -> String {
+            self.to_string() +"\0"
+        }
+    }
+    impl Encodable for i64 {
+        fn encode(&self) -> String {
+            self.to_string() +"\0"
+        }
+    }
+    impl Encodable for Decimal {
+        fn encode(&self) -> String {
+            self.to_string() +"\0"
+        }
+    }
+    impl Encodable for usize {
+        fn encode(&self) -> String {
+            self.to_string() +"\0"
+        }
+    }
+    impl Encodable for String {
+        fn encode(&self) -> String {
+            self.to_string() +"\0"
+        }
+    }
+    impl Encodable for &str {
         fn encode(&self) -> String {
             self.to_string() +"\0"
         }
@@ -71,13 +121,6 @@ pub mod ib_message {
     impl Encodable for bool {
         fn encode(&self) -> String {
             if *self {"1\0".to_string()} else {"0\0".to_string()}
-        }
-    }
-
-    impl Encodable for String
-    {
-        fn encode(&self) -> String {
-            self.to_string() + "\0"
         }
     }
 

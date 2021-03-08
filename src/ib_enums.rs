@@ -2,6 +2,7 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use std::str::FromStr;
 use crate::utils::ib_message::Encodable;
+use crate::utils::ib_message::Decodable;
 
 use enum_ordinalize;
 
@@ -308,6 +309,8 @@ impl FromStr for TickType {
     }
 }
 
+impl Decodable for TickType {}
+
 pub enum GenericTickType {
     ShortableData,
     HistoricData,
@@ -363,6 +366,8 @@ impl FromStr for MarketDataType {
         Ok(res)
     }
 }
+
+impl Decodable for MarketDataType {}
 
 pub enum FundamentalDataType {
     Snapshot,
@@ -439,6 +444,8 @@ impl FromStr for SecType {
         Ok(res)
     }
 }
+
+impl Decodable for SecType {}
 #[derive(Debug)]
 pub enum OptionRight {
     Undefined,
@@ -470,6 +477,7 @@ impl FromStr for OptionRight {
     }
 }
 
+impl Decodable for OptionRight {}
 #[derive(Debug)]
 pub enum SecIdType {
     Isin,
@@ -514,6 +522,8 @@ impl FromStr for ComboAction {
     }
 }
 
+impl Decodable for ComboAction { }
+
 #[derive(Debug)]
 pub enum OptionOpenClose {
     Same,
@@ -546,6 +556,8 @@ impl FromStr for OptionOpenClose {
     }
 }
 
+impl Decodable for OptionOpenClose {}
+
 #[derive(Debug)]
 pub enum ShortSaleSlot {
     NoSlot,
@@ -574,6 +586,8 @@ impl FromStr for ShortSaleSlot {
         }
     }
 }
+
+impl Decodable for ShortSaleSlot {}
 
 #[derive(Debug)]
 pub enum Action {
@@ -612,6 +626,8 @@ impl FromStr for Action {
         }
     }
 }
+
+impl Decodable for Action {}
 
 #[derive(Debug,PartialEq,Eq)]
 pub enum OrderType {
@@ -708,6 +724,8 @@ impl FromStr for OrderType {
     }
 }
 
+impl Decodable for OrderType {}
+
 impl Default for OrderType {
     fn default() -> Self {
         OrderType::Market
@@ -754,6 +772,8 @@ impl FromStr for TriggerMethod {
     }
 }
 
+impl Decodable for TriggerMethod {}
+
 pub enum TimeInForce {
     Day,
     GoodTillCancel,
@@ -793,6 +813,8 @@ impl FromStr for TimeInForce {
         }
     }
 }
+
+impl Decodable for TimeInForce {}
 
 pub enum Rule80A {
     Individual,
@@ -840,6 +862,8 @@ impl FromStr for Rule80A {
     }
 }
 
+impl Decodable for Rule80A {}
+
 pub enum OrderOpenClose {
     Open,
     Close,
@@ -864,6 +888,8 @@ impl FromStr for OrderOpenClose {
         }
     }
 }
+
+impl Decodable for OrderOpenClose {}
 
 pub enum Origin {
     Customer,
@@ -892,6 +918,9 @@ impl FromStr for Origin {
         }
     }
 }
+
+impl Decodable for Origin {}
+
 #[derive(FromPrimitive)]
 pub enum AuctionStrategy {
     NoAuctionStrategy,
@@ -924,6 +953,9 @@ impl FromStr for AuctionStrategy {
         };
     }
 }
+
+impl Decodable for AuctionStrategy {}
+
 #[derive(FromPrimitive)]
 pub enum OCAType {
     NoOCAType,
@@ -957,6 +989,8 @@ impl FromStr for OCAType {
     }
 }
 
+impl Decodable for OCAType {}
+
 pub enum VolatilityType {
     NoVolType,
     Daily,
@@ -984,6 +1018,8 @@ impl FromStr for VolatilityType {
         }
     }
 }
+
+impl Decodable for VolatilityType {}
 
 pub enum ReferencePriceType {
     NoRefPriceType,
@@ -1013,6 +1049,8 @@ impl FromStr for ReferencePriceType {
     }
 }
 
+impl Decodable for ReferencePriceType {}
+
 pub enum BasisPointsType {
     Undefined,
 }
@@ -1034,6 +1072,9 @@ impl FromStr for BasisPointsType {
         }
     }
 }
+
+impl Decodable for BasisPointsType {}
+
 #[derive(PartialEq)]
 pub enum HedgeType {
     Undefined,
@@ -1069,6 +1110,8 @@ impl FromStr for HedgeType {
     }
 }
 
+impl Decodable for HedgeType {}
+
 pub enum ClearingIntent {
     InteractiveBrokers,
     Away,
@@ -1097,6 +1140,8 @@ impl FromStr for ClearingIntent {
     }
 }
 
+impl Decodable for ClearingIntent {}
+
 pub enum UsePriceMgmtAlgo {
     DontUse,
     Use
@@ -1122,6 +1167,8 @@ impl FromStr for UsePriceMgmtAlgo {
     }
 }
 
+impl Decodable for UsePriceMgmtAlgo {}
+
 pub enum Side {
     Long,
     Short,
@@ -1146,6 +1193,9 @@ impl FromStr for Side {
         }
     }
 }
+
+impl Decodable for Side {}
+
 #[derive(FromPrimitive)]
 #[derive(enum_ordinalize::Ordinalize)]
 pub enum OrderConditionType {
@@ -1177,6 +1227,8 @@ impl FromStr for OrderConditionType {
         };
     }
 }
+
+impl Decodable for OrderConditionType {}
 
 pub enum IBAccountField {
     AccountType,
@@ -1247,3 +1299,5 @@ impl FromStr for IBAccountField {
         }
     }
 }
+
+impl Decodable for IBAccountField {}

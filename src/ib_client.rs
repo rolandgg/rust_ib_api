@@ -17,13 +17,14 @@ use std::collections::VecDeque;
 use rust_decimal::prelude::*;
 
 use std::str;
+use chrono::{TimeZone, DateTime};
 //use chrono::format::ParseError;
 use tokio::task;
 use tokio::time;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use crossbeam::channel;
+use crossbeam::channel::{self, RecvError};
 use std::sync::atomic::AtomicUsize;
 use futures::future::{Abortable, AbortHandle, Aborted};
 
@@ -66,7 +67,8 @@ impl IBClient
         valid_versions.push_str(&constants::MAX_CLIENT_VER.to_string());
         writer.write(&valid_versions).await?;
         let msg = reader.read().await?;
-        let mut it = ib_message::iter_ib_message(&msg);
+        let msg = String::from_utf8_lossy(&msg);
+        let mut it = msg.split("\0");
         let server_version = it.next().unwrap().parse().unwrap();
 
         println!("{:?}", server_version);
@@ -100,7 +102,7 @@ impl IBClient
             msg.push_str(&1i32.encode());
             loop{
                 tx.send(msg.clone()).await.expect("Could not send heartbeat");
-                time::sleep(time::Duration::from_secs(1)).await;
+                time::sleep(time::Duration::from_secs(60)).await;
             }
         }, keep_alive_abort_registration);
         let _keep_alive_task = tokio::spawn(keep_alive_fut);
@@ -143,7 +145,7 @@ impl IBClient
                         Err(_) => break
                     }
                 };
-                println!("{:?}", str::from_utf8(&msg[..]));
+                println!("{:?}", String::from_utf8_lossy(&msg));
                 let frame = IBFrame::parse(&msg);
                 match frame {
                     IBFrame::AccountCode(code) => account_tx.account_code.send(code).unwrap(),
@@ -388,10 +390,8 @@ impl IBClient
         msg.push_str(&id.encode());
         msg.push_str(&order.encode());
         let (rep_tx, rep_rx) = oneshot::channel();
-        match self.req_tx.send(Request::Order{id, sender: rep_tx}) {
-            Err(err) => panic!("{:?}", err),
-            _ => ()
-        }
+        self.req_tx.send(Request::Order{id, sender: rep_tx})?;
+        println!("{:?}", msg);
         self.write_tx.send(msg).await?;
         match rep_rx.await {
             Ok(result) => Ok(result),
@@ -400,8 +400,9 @@ impl IBClient
     }
 
     pub async fn req_market_data(&mut self, contract: &ib_contract::Contract, snapshot: bool, regulatory: bool, 
-        additional_data: &[GenericTickType]) -> AsyncResult<ticker::Ticker> {
+        additional_data: Vec<GenericTickType>) -> AsyncResult<ticker::Ticker> {
         let mut msg = Outgoing::ReqMktData.encode();
+        msg.push_str("11\0"); //version
         let id = self.get_next_req_id();
         msg.push_str(&id.encode());
         msg.push_str(&contract.encode_for_ticker());
@@ -417,8 +418,9 @@ impl IBClient
         msg.push_str(&snapshot.encode());
         msg.push_str(&regulatory.encode());
         msg.push_str("\0");
+        println!("{:?}", msg);
         let (req_tx, req_rx) = oneshot::channel();
-        self.req_tx.send(Request::Ticker{id, sender: req_tx});
+        self.req_tx.send(Request::Ticker{id, sender: req_tx})?;
         self.write_tx.send(msg).await?;
         match req_rx.await {
             Ok(ticker) => Ok(ticker),
@@ -426,17 +428,20 @@ impl IBClient
         }
     }
 
-    pub async fn req_historical_bar_data(&mut self, contract: &ib_contract::Contract, 
-        duration: &str, bar_period: &str, what_to_show: &str, use_rth: bool) -> AsyncResult<bars::BarSeries> {
+    pub async fn req_historical_data<Tz: TimeZone> (&mut self, contract: &ib_contract::Contract, end_date_time: &DateTime<Tz>, 
+        duration: &str, bar_period: &str, what_to_show: &str, use_rth: bool) -> AsyncResult<bars::BarSeries>
+        where
+        <Tz as TimeZone>::Offset: std::fmt::Display
+        {
         let mut msg = Outgoing::ReqHistoricalData.encode();
         let id = self.get_next_req_id();
         msg.push_str(&id.encode());
-        msg.push_str(&contract.encode_for_ticker());
-        msg.push_str("");
-        msg.push_str(bar_period);
-        msg.push_str(duration);
+        msg.push_str(&contract.encode_for_hist_data());
+        msg.push_str(&end_date_time.format("%Y%m%d %H:%M:%S %Z").to_string().encode());
+        msg.push_str(&bar_period.encode());
+        msg.push_str(&duration.encode());
         msg.push_str(&use_rth.encode());
-        msg.push_str(what_to_show);
+        msg.push_str(&what_to_show.encode());
         msg.push_str("1\00\0\0");
         let (resp_tx, resp_rx) = oneshot::channel();
         self.req_tx.send(Request::Bars{id, sender: resp_tx});
