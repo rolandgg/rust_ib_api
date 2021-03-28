@@ -1,5 +1,5 @@
 use rs_ib_api::ib_client::IBClient;
-use rs_ib_api::ib_contract::Contract;
+use rs_ib_api::ib_contract::*;
 use rs_ib_api::order::Order;
 use tokio::time;
 use chrono::Duration;
@@ -47,6 +47,35 @@ async fn place_market_order() {
         ..Default::default()
     };
     let order = Order::market(contract, Action::Buy, Decimal::new(10,0));
+    match &mut client.place_order(&order).await {
+        Ok(tracker) => {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            assert_eq!(tracker.status(), Some("Filled".to_string()));
+        }
+        Err(err)    => panic!("Error during order submission.")
+    }
+}
+
+#[tokio::test]
+async fn place_spread_market_order() {
+    let mut client = match IBClient::connect(4002, 1, "").await {
+        Ok(client) => client,
+        Err(_error) => panic!("Connection not successful!")
+    };
+    let mut legs = Vec::new();
+    legs.push(ComboLeg::new(43645865, 1, ComboAction::Buy, "SMART")); //IBKR
+    legs.push(ComboLeg::new(9408, 1, ComboAction::Sell, "SMART")); //MCD
+    let contract = Contract {
+        symbol: Some("IBKR,MCD".to_string()),
+        exchange: Some("SMART".to_string()),
+        sec_type: Some(SecType::Combo),
+        currency: Some("USD".to_string()),
+        combo_legs: Some(legs),
+        ..Default::default()
+    };
+
+    let mut order = Order::market(contract, Action::Buy, Decimal::new(10,0));
+    order.smart_combo_routing_params = Some(vec![("NonGuaranteed".to_string(), "1".to_string())]);
     match &mut client.place_order(&order).await {
         Ok(tracker) => {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;

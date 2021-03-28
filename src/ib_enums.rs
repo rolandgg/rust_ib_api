@@ -200,7 +200,7 @@ pub struct ParseEnumError;
 // Some enums are only for decoding and implement the FromStr trait
 // Some enums are only for encoding and implement the encode method (might make it a trait)
 
-#[derive(FromPrimitive)]
+#[derive(FromPrimitive,Debug,Clone)]
 pub enum TickType {
     BidSize,
     Bid,
@@ -311,6 +311,7 @@ impl FromStr for TickType {
 
 impl Decodable for TickType {}
 
+#[derive(Debug,Clone)]
 pub enum GenericTickType {
     ShortableData,
     HistoricData,
@@ -335,6 +336,7 @@ impl Encodable for GenericTickType {
     }
 }
 
+#[derive(Debug,Clone)]
 pub enum MarketDataType {
     RealTime = 1,
     Frozen = 2,
@@ -369,6 +371,7 @@ impl FromStr for MarketDataType {
 
 impl Decodable for MarketDataType {}
 
+#[derive(Debug,Clone)]
 pub enum FundamentalDataType {
     Snapshot,
     FinSummary,
@@ -388,7 +391,7 @@ impl Encodable for FundamentalDataType {
         }.to_string()
     }
 }
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug,PartialEq,Eq,Clone)]
 pub enum SecType {
     Stock,
     Option,
@@ -446,7 +449,7 @@ impl FromStr for SecType {
 }
 
 impl Decodable for SecType {}
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum OptionRight {
     Undefined,
     Put,
@@ -478,7 +481,7 @@ impl FromStr for OptionRight {
 }
 
 impl Decodable for OptionRight {}
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum SecIdType {
     Isin,
     Cusip,
@@ -493,7 +496,7 @@ impl Encodable for SecIdType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum ComboAction {
     Buy,
     Sell,
@@ -524,7 +527,7 @@ impl FromStr for ComboAction {
 
 impl Decodable for ComboAction { }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum OptionOpenClose {
     Same,
     Open,
@@ -558,7 +561,7 @@ impl FromStr for OptionOpenClose {
 
 impl Decodable for OptionOpenClose {}
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum ShortSaleSlot {
     NoSlot,
     Broker,
@@ -589,7 +592,7 @@ impl FromStr for ShortSaleSlot {
 
 impl Decodable for ShortSaleSlot {}
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Action {
     Buy,
     Sell,
@@ -629,7 +632,7 @@ impl FromStr for Action {
 
 impl Decodable for Action {}
 
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug,PartialEq,Eq,Clone)]
 pub enum OrderType {
     NoOrderType, //only legit for deltaNeutralOrderType
     Limit,
@@ -732,6 +735,7 @@ impl Default for OrderType {
     }
 }
 
+#[derive(Debug,Clone)]
 pub enum TriggerMethod {
     Default,
     DoubleBidAsk,
@@ -774,6 +778,7 @@ impl FromStr for TriggerMethod {
 
 impl Decodable for TriggerMethod {}
 
+#[derive(Debug,Clone)]
 pub enum TimeInForce {
     Day,
     GoodTillCancel,
@@ -816,6 +821,7 @@ impl FromStr for TimeInForce {
 
 impl Decodable for TimeInForce {}
 
+#[derive(Debug,Clone)]
 pub enum Rule80A {
     Individual,
     Agency,
@@ -864,6 +870,7 @@ impl FromStr for Rule80A {
 
 impl Decodable for Rule80A {}
 
+#[derive(Debug,Clone)]
 pub enum OrderOpenClose {
     Open,
     Close,
@@ -891,6 +898,7 @@ impl FromStr for OrderOpenClose {
 
 impl Decodable for OrderOpenClose {}
 
+#[derive(Debug,Clone)]
 pub enum Origin {
     Customer,
     Firm,
@@ -921,7 +929,7 @@ impl FromStr for Origin {
 
 impl Decodable for Origin {}
 
-#[derive(FromPrimitive)]
+#[derive(FromPrimitive,Debug,Clone)]
 pub enum AuctionStrategy {
     NoAuctionStrategy,
     Match,
@@ -956,7 +964,7 @@ impl FromStr for AuctionStrategy {
 
 impl Decodable for AuctionStrategy {}
 
-#[derive(FromPrimitive)]
+#[derive(FromPrimitive,Debug,Clone)]
 pub enum OCAType {
     NoOCAType,
     CancelWithBlock,
@@ -991,6 +999,7 @@ impl FromStr for OCAType {
 
 impl Decodable for OCAType {}
 
+#[derive(Debug,Clone)]
 pub enum VolatilityType {
     NoVolType,
     Daily,
@@ -1021,6 +1030,7 @@ impl FromStr for VolatilityType {
 
 impl Decodable for VolatilityType {}
 
+#[derive(Debug,Clone)]
 pub enum ReferencePriceType {
     NoRefPriceType,
     Average,
@@ -1051,6 +1061,7 @@ impl FromStr for ReferencePriceType {
 
 impl Decodable for ReferencePriceType {}
 
+#[derive(Debug,Clone)]
 pub enum BasisPointsType {
     Undefined,
 }
@@ -1075,7 +1086,7 @@ impl FromStr for BasisPointsType {
 
 impl Decodable for BasisPointsType {}
 
-#[derive(PartialEq)]
+#[derive(PartialEq,Debug,Clone)]
 pub enum HedgeType {
     Undefined,
     Delta,
@@ -1112,6 +1123,7 @@ impl FromStr for HedgeType {
 
 impl Decodable for HedgeType {}
 
+#[derive(Debug,Clone)]
 pub enum ClearingIntent {
     InteractiveBrokers,
     Away,
@@ -1142,6 +1154,7 @@ impl FromStr for ClearingIntent {
 
 impl Decodable for ClearingIntent {}
 
+#[derive(Debug,Clone)]
 pub enum UsePriceMgmtAlgo {
     DontUse,
     Use
@@ -1169,6 +1182,7 @@ impl FromStr for UsePriceMgmtAlgo {
 
 impl Decodable for UsePriceMgmtAlgo {}
 
+#[derive(Debug,Clone)]
 pub enum Side {
     Long,
     Short,
@@ -1196,7 +1210,7 @@ impl FromStr for Side {
 
 impl Decodable for Side {}
 
-#[derive(FromPrimitive)]
+#[derive(FromPrimitive,Debug,Clone)]
 #[derive(enum_ordinalize::Ordinalize)]
 pub enum OrderConditionType {
     Price = 1,

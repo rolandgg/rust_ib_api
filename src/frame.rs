@@ -281,10 +281,10 @@ impl IBFrame {
                             ratio: decode(&mut it).unwrap(),
                             action: decode(&mut it).unwrap(),
                             exchange: decode(&mut it).unwrap(),
-                            open_close: decode(&mut it).unwrap(),
-                            shortsale_slot: decode(&mut it).unwrap(),
-                            designated_location: decode(&mut it).unwrap(),
-                            exempt_code: decode(&mut it).unwrap(),
+                            open_close: decode(&mut it),
+                            shortsale_slot: decode(&mut it),
+                            designated_location: decode(&mut it),
+                            exempt_code: decode(&mut it),
                         })
                     }
                     order.contract.combo_legs = Some(legs);

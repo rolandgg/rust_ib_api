@@ -1,26 +1,37 @@
 use crate::ib_enums;
 use rust_decimal::prelude::*;
+use crate::ib_enums::*;
 use crate::utils::ib_message::Encodable;
-#[derive(Debug)]
+use chrono::{DateTime,NaiveDateTime,Utc,TimeZone};
+use chrono_tz::Tz;
+use chrono_tz::{UTC,US};
+#[derive(Debug,Clone)]
 pub struct ComboLeg {
     pub con_id: i32,
     pub ratio: i32,
     pub action: ib_enums::ComboAction,
     pub exchange: String,
-    pub open_close: ib_enums::OptionOpenClose,
-    pub shortsale_slot: ib_enums::ShortSaleSlot,
-    pub designated_location: String,
-    pub exempt_code: i32,
+    pub open_close: Option<ib_enums::OptionOpenClose>,
+    pub shortsale_slot: Option<ib_enums::ShortSaleSlot>,
+    pub designated_location: Option<String>,
+    pub exempt_code: Option<i32>,
 }
 
-#[derive(Default,Debug)]
+impl ComboLeg {
+    pub fn new(con_id: i32, ratio: i32, action: ib_enums::ComboAction, exchange: &str) -> ComboLeg {
+        ComboLeg{
+            con_id, ratio, action, exchange: exchange.to_string(), open_close: None, shortsale_slot: None, designated_location: None, exempt_code: None
+        }
+    }
+}
+#[derive(Default,Debug,Clone)]
 pub struct DeltaNeutralContract {
     pub con_id: i32,
     pub delta: Decimal,
     pub price: Decimal,
 }
 
-#[derive(Default,Debug)]
+#[derive(Default,Debug,Clone)]
 pub struct Contract {
     pub con_id: Option<i32>,
     pub symbol: Option<String>,
@@ -118,6 +129,30 @@ impl Contract {
         code.push_str(&self.include_expired.encode());
         code
     }
+
+    pub fn stock_spread_smart_usd(contract_1: &Contract, ratio_1: i32, contract_2: &Contract, ratio_2: i32) -> Option<Contract> {
+        let mut ret = None;
+        if let Some(con_id_1) = contract_1.con_id {
+            if let Some(con_id_2) = contract_2.con_id {
+                if let Some(symbol_1) = &contract_1.symbol { 
+                    if let Some(symbol_2) = &contract_2.symbol {
+                        let mut legs = Vec::new();
+                        legs.push(ComboLeg::new(con_id_1, ratio_1, ComboAction::Buy, "SMART")); //IBKR
+                        legs.push(ComboLeg::new(con_id_2, ratio_2, ComboAction::Sell, "SMART")); //MCD
+                        ret = Some(Contract {
+                            symbol: Some(symbol_1.clone() + "," + &symbol_2),
+                            exchange: Some("SMART".to_string()),
+                            sec_type: Some(SecType::Combo),
+                            currency: Some("USD".to_string()),
+                            combo_legs: Some(legs),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+        ret
+    }
 }
 
 #[derive(Default,Debug)]
@@ -162,6 +197,31 @@ pub struct ContractDetails {
     pub next_option_date: Option<bool>,
     pub next_option_type: Option<bool>,
     pub notes: Option<String>,
+}
+
+impl ContractDetails {
+    pub fn liquid_hours(&self) -> Option<Vec<Option<(DateTime<Tz>, DateTime<Tz>)>>> {
+
+        let mut liq_hours_it = self.liquid_hours.as_ref()?.split(";");
+        let mut ret = Vec::new();
+        while let Some(liq_hours) = liq_hours_it.next() {
+            if liq_hours == "CLOSED" {ret.push(None);}
+            else {
+                let mut hours_it = liq_hours.split("-");
+                let open_dt = NaiveDateTime::parse_from_str(hours_it.next()?, "%Y%m%d:%H%M").unwrap();
+                let close_dt = NaiveDateTime::parse_from_str(hours_it.next()?, "%Y%m%d:%H%M").unwrap();
+                if let Some(tz) = &self.timezone_id {
+                    if tz.contains("EST") {
+                        ret.push(Some((US::Eastern.from_local_datetime(&open_dt).unwrap(), US::Eastern.from_local_datetime(&close_dt).unwrap())));
+                    }
+                    else {
+                        ret.push(Some((UTC.from_local_datetime(&open_dt).unwrap(), UTC.from_local_datetime(&close_dt).unwrap())));
+                    }
+                } 
+            }
+        }
+       Some(ret)
+    }
 }
 
 pub struct ContractDescription {

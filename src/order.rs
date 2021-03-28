@@ -4,6 +4,7 @@ use crate::utils::ib_message::Encodable;
 use crate::ib_contract::Contract;
 use crossbeam::channel;
 use tokio::sync::watch;
+#[derive(Debug,Clone)]
 pub struct OrderTracker {
     order_rx: watch::Receiver<Order>,
     error: Option<(i32,String)>,
@@ -63,14 +64,34 @@ impl OrderTracker {
         }
     }
 
-    pub fn status(& mut self) -> Option<String> {
+    pub fn status(&self) -> Option<String> {
         match &*self.order_status_rx.borrow() {
             Some(stat) => Some(stat.status.clone()),
             None => None
         }
     }
 
-    pub fn avg_fill_price(&mut self) -> Option<Decimal> {
+    pub fn is_filled(&self) -> bool {
+        if let Some(stat) = &*self.order_status_rx.borrow() {
+            if &stat.status == "Filled" {
+                return true;
+            } 
+        }
+        return false;
+    }
+
+    pub fn fill_time(&self) -> Option<String> {
+        self.order_state_rx.borrow().completed_time.clone() 
+    }
+
+    pub fn qty_filled(&self) -> Option<Decimal> {
+        match &*self.order_status_rx.borrow() {
+            Some(stat) => Some(stat.filled.clone()),
+            None => None
+        }
+    }
+
+    pub fn avg_fill_price(&self) -> Option<Decimal> {
         match &*self.order_status_rx.borrow() {
             Some(stat) => Some(stat.avg_fill_price.clone()),
             None => None
@@ -88,13 +109,14 @@ impl OrderTracker {
     }
 }
 
+#[derive(Default,Debug,Clone)]
 pub struct SoftDollarTier {
     pub name: Option<String>,
     pub val: Option<String>,
     pub display_name: Option<String>
 }
 
-#[derive(Default)]
+#[derive(Default,Debug,Clone)]
 pub struct Order {
 
     //contract
@@ -308,6 +330,15 @@ impl Order {
         order.contract = contract;
         order.total_qty = qty;
         order.order_type = OrderType::MarketOnClose;
+        order
+    }
+
+    pub fn relative_market(contract: Contract, action: Action, qty: Decimal) -> Self {
+        let mut order = Order::new();
+        order.action = action;
+        order.contract = contract;
+        order.total_qty = qty;
+        order.order_type = OrderType::RelativeMarket;
         order
     }
 
@@ -535,7 +566,7 @@ impl Encodable for Order {
     }
 }  
 
-#[derive(Default)]
+#[derive(Default,Debug,Clone)]
 pub struct OrderState {
     pub status: Option<String>,
     pub init_margin_before: Option<Decimal>,
@@ -555,7 +586,7 @@ pub struct OrderState {
     pub completed_time: Option<String>,
     pub completed_status: Option<String>,
 }
-
+#[derive(Default,Debug,Clone)]
 pub struct OrderStatus {
     pub order_id: usize,
     pub status: String,
@@ -568,7 +599,7 @@ pub struct OrderStatus {
     pub client_id:  usize,
     pub why_held: Option<String>
 }
-
+#[derive(Debug,Clone)]
 pub struct Execution {
     pub exec_id: String,
     pub time: String,
@@ -590,7 +621,7 @@ pub struct Execution {
     pub model_code: Option<String>,
     pub last_liquidity: Option<i32>
 }
-
+#[derive(Default,Debug,Clone)]
 pub struct CommissionReport {
     pub exec_id: String,
     pub commission: Decimal,

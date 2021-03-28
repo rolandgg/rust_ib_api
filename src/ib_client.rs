@@ -355,14 +355,14 @@ impl IBClient
         *self.account.excess_liquidity.borrow()
     }
 
-    fn get_next_req_id (&mut self) -> usize {
+    fn get_next_req_id(&mut self) -> usize {
         let req_id = self.next_req_id.get_mut();
         let id = *req_id;
         *req_id += 1;
         id
     }
 
-    fn get_next_order_id (&mut self) -> usize {
+    fn get_next_order_id(&mut self) -> usize {
         let order_id = self.next_order_id.get_mut();
         let id = *order_id;
         *order_id += 1;
