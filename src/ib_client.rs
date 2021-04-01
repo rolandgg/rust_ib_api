@@ -25,13 +25,13 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use crossbeam::channel::{self, RecvError};
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize,AtomicI32};
 use futures::future::{Abortable, AbortHandle, Aborted};
 
 enum Request {
     ContractDetails{id: usize, sender: oneshot::Sender<Vec<ib_contract::ContractDetails>>},
-    OrderID(oneshot::Sender<usize>),
-    Order{id: usize, sender: oneshot::Sender<order::OrderTracker>},
+    OrderID(oneshot::Sender<i32>),
+    Order{id: i32, sender: oneshot::Sender<order::OrderTracker>},
     Ticker{id: usize, sender: oneshot::Sender<ticker::Ticker>},
     Bars{id: usize, sender: oneshot::Sender<bars::BarSeries>}
 }
@@ -46,7 +46,7 @@ pub struct IBClient
     server_version: i32,
     account: account::AccountReceiver,
     next_req_id: AtomicUsize,
-    next_order_id: AtomicUsize,
+    next_order_id: AtomicI32,
 }
 
 impl IBClient
@@ -113,15 +113,15 @@ impl IBClient
             //caches
             let mut positions_cache: Vec<account::Position> = Vec::new();
             let mut contract_details_cache: HashMap<usize,Vec<ib_contract::ContractDetails>> = HashMap::new();
-            let mut executions_cache: HashMap<String, usize> = HashMap::new();
+            let mut executions_cache: HashMap<String, i32> = HashMap::new();
             //pending requests
-            let mut order_id_reqs: VecDeque<oneshot::Sender<usize>> = VecDeque::new();
+            let mut order_id_reqs: VecDeque<oneshot::Sender<i32>> = VecDeque::new();
             let mut contract_details_reqs: HashMap<usize, oneshot::Sender<Vec<ib_contract::ContractDetails>>> = HashMap::new();
-            let mut orders: HashMap<usize, oneshot::Sender<order::OrderTracker>> = HashMap::new();
+            let mut orders: HashMap<i32, oneshot::Sender<order::OrderTracker>> = HashMap::new();
             let mut ticker_reqs: HashMap<usize, oneshot::Sender<ticker::Ticker>> = HashMap::new();
             let mut bar_reqs: HashMap<usize, oneshot::Sender<bars::BarSeries>>  = HashMap::new();
             //open order trackers
-            let mut order_trackers: HashMap<usize, order::OrderTrackerSender> = HashMap::new();
+            let mut order_trackers: HashMap<i32, order::OrderTrackerSender> = HashMap::new();
             //open tickers
             let mut tickers: HashMap<usize, ticker::TickerSender> = HashMap::new();
 
@@ -322,7 +322,7 @@ impl IBClient
             server_version,
             account,
             next_req_id: AtomicUsize::new(0),
-            next_order_id: AtomicUsize::new(0)
+            next_order_id: AtomicI32::new(0)
         };
         //subscribe to account updates
         msg = Outgoing::ReqAcctData.encode();
@@ -362,7 +362,7 @@ impl IBClient
         id
     }
 
-    fn get_next_order_id(&mut self) -> usize {
+    fn get_next_order_id(&mut self) -> i32 {
         let order_id = self.next_order_id.get_mut();
         let id = *order_id;
         *order_id += 1;

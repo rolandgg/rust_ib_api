@@ -34,6 +34,27 @@ async fn contract_details() {
 }
 
 #[tokio::test]
+async fn liquid_hours() {
+    let mut client = match IBClient::connect(4002, 1, "").await {
+        Ok(client) => client,
+        Err(_error) => panic!("Connection not successful!")
+    };
+    let contract = Contract {
+        symbol: Some("AAPL".to_string()),
+        exchange: Some("SMART".to_string()),
+        sec_type: Some(SecType::Stock),
+        currency: Some("USD".to_string()),
+        ..Default::default()
+    }; 
+    match client.req_contract_details(&contract).await {
+        Ok(details) => for detail in &details {
+            assert!(detail.liquid_hours().is_some());
+        }
+        Err(_) => panic!("Error requesting contract details")
+    };
+}
+
+#[tokio::test]
 async fn place_market_order() {
     let mut client = match IBClient::connect(4002, 2, "").await {
         Ok(client) => client,

@@ -200,22 +200,24 @@ pub struct ContractDetails {
 }
 
 impl ContractDetails {
-    pub fn liquid_hours(&self) -> Option<Vec<Option<(DateTime<Tz>, DateTime<Tz>)>>> {
+    pub fn liquid_hours(&self) -> Option<Vec<(DateTime<Tz>, DateTime<Tz>)>> {
 
         let mut liq_hours_it = self.liquid_hours.as_ref()?.split(";");
         let mut ret = Vec::new();
         while let Some(liq_hours) = liq_hours_it.next() {
-            if liq_hours == "CLOSED" {ret.push(None);}
+            if liq_hours.contains("CLOSED") {continue}
             else {
                 let mut hours_it = liq_hours.split("-");
-                let open_dt = NaiveDateTime::parse_from_str(hours_it.next()?, "%Y%m%d:%H%M").unwrap();
-                let close_dt = NaiveDateTime::parse_from_str(hours_it.next()?, "%Y%m%d:%H%M").unwrap();
+                let open_str = hours_it.next()?;
+                let close_str = hours_it.next()?;
+                let open_dt = NaiveDateTime::parse_from_str(open_str, "%Y%m%d:%H%M").unwrap();
+                let close_dt = NaiveDateTime::parse_from_str(close_str, "%Y%m%d:%H%M").unwrap();
                 if let Some(tz) = &self.timezone_id {
-                    if tz.contains("EST") {
-                        ret.push(Some((US::Eastern.from_local_datetime(&open_dt).unwrap(), US::Eastern.from_local_datetime(&close_dt).unwrap())));
+                    if tz.contains("US/Eastern") {
+                        ret.push((US::Eastern.from_local_datetime(&open_dt).unwrap(), US::Eastern.from_local_datetime(&close_dt).unwrap()));
                     }
                     else {
-                        ret.push(Some((UTC.from_local_datetime(&open_dt).unwrap(), UTC.from_local_datetime(&close_dt).unwrap())));
+                        ret.push((UTC.from_local_datetime(&open_dt).unwrap(), UTC.from_local_datetime(&close_dt).unwrap()));
                     }
                 } 
             }

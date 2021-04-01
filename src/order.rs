@@ -123,7 +123,7 @@ pub struct Order {
     pub contract: Contract,
 
     //order identification
-    pub order_id: usize,
+    pub order_id: i32,
     pub client_id: usize,
     pub perm_id: i32,
 
@@ -588,7 +588,7 @@ pub struct OrderState {
 }
 #[derive(Default,Debug,Clone)]
 pub struct OrderStatus {
-    pub order_id: usize,
+    pub order_id: i32,
     pub status: String,
     pub filled: Decimal,
     pub remaining: Decimal,
@@ -610,7 +610,7 @@ pub struct Execution {
     pub price: Decimal,
     pub perm_id: i32,
     pub client_id: usize,
-    pub order_id: usize,
+    pub order_id: i32,
     pub contract: Contract,
     pub liquidation: i32,
     pub cum_qty: Decimal,

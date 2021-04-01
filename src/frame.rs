@@ -36,7 +36,7 @@ pub enum IBFrame {
         req_id: usize, contract_details: ib_contract::ContractDetails
     },
     ContractDetailsEnd(usize),
-    OrderID(usize),
+    OrderID(i32),
     OpenOrder{
         order: order::Order, order_state: order::OrderState
     },
@@ -184,7 +184,7 @@ impl IBFrame {
                 IBFrame::OrderID(decode(&mut it).unwrap())
             }
             Incoming::OpenOrder => {
-                let order_id: usize = decode(&mut it).unwrap();
+                let order_id: i32 = decode(&mut it).unwrap();
                 //decode contract
                 let contract = ib_contract::Contract {
                     con_id: decode(&mut it),
@@ -431,7 +431,7 @@ impl IBFrame {
             },
             Incoming::ExecutionData => {
                 it.next(); //skip version
-                let order_id: usize = decode(&mut it).unwrap();
+                let order_id: i32 = decode(&mut it).unwrap();
                 let contract = ib_contract::Contract {
                     con_id: decode(&mut it),
                     symbol : decode(&mut it),
