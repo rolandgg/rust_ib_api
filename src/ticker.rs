@@ -15,6 +15,18 @@ impl ShortAvailability {
     }
 }
 
+use std::fmt;
+impl fmt::Display for ShortAvailability {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ShortAvailability::Available => write!(f, "Available"),
+            ShortAvailability::HardToBorrow => write!(f, "HardToBorrow"),
+            ShortAvailability::Unavailable => write!(f, "Unavailable")
+        }
+    }
+}
+
+
 pub struct Ticker {
     bid: watch::Receiver<Option<f64>>,
     bid_size: watch::Receiver<Option<i32>>,
@@ -82,31 +94,27 @@ impl Ticker {
     }
 
     pub fn bid(&self) -> Option<f64> {
-        if let Some(bid) = &*self.bid.borrow() {
-            Some(bid.clone())
-        }
-        else {None}
+        self.bid.borrow().clone()
     }
 
     pub fn ask(&self) -> Option<f64> {
-        if let Some(ask) = &*self.ask.borrow() {
-            Some(ask.clone())
-        }
-        else {None}
+        self.ask.borrow().clone()
+    }
+
+    pub fn bid_size(&self) -> Option<i32> {
+        self.bid_size.borrow().clone()
+    }
+
+    pub fn ask_size(&self) -> Option<i32> {
+        self.ask_size.borrow().clone()
     }
 
     pub fn shortable_shares(&self) -> Option<i32> {
-        if let Some(shares) = &*self.shortable_shares.borrow() {
-            Some(shares.clone())
-        }
-        else {None}
+        self.shortable_shares.borrow().clone()
     }
 
     pub fn short_availability(&self) -> Option<ShortAvailability> {
-        if let Some(avail) = &*self.short_availability.borrow() {
-            Some(avail.clone())
-        }
-        else {None}
+        self.short_availability.borrow().clone()
     }
 
 }
