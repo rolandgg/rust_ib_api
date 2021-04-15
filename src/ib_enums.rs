@@ -474,6 +474,8 @@ impl FromStr for OptionRight {
             "?" => OptionRight::Undefined,
             "PUT" => OptionRight::Put,
             "CALL" => OptionRight::Call,
+            "P" => OptionRight::Put,
+            "C" => OptionRight::Call,
             &_ => return Err(ParseEnumError)
         };
         Ok(res)

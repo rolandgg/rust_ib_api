@@ -1,3 +1,5 @@
+
+#[derive(Debug,Clone)]
 pub struct Bar {
     pub t_stamp: String,
     pub open: f64,
@@ -8,7 +10,7 @@ pub struct Bar {
     pub volume: i64,
     pub count: isize
 }
-
+#[derive(Debug,Clone)]
 pub struct BarSeries {
     pub start_dt: String,
     pub end_dt: String,
