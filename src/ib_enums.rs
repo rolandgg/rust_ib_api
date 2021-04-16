@@ -1317,3 +1317,116 @@ impl FromStr for IBAccountField {
 }
 
 impl Decodable for IBAccountField {}
+
+pub enum HistoricalDataType {
+    //AdjustedLast is not included here, because it's special!
+    Trades,
+    Midpoint,
+    Bid,
+    Ask,
+    BidAsk,
+    HistoricalVolatility,
+    OptionImpliedVolatility,
+    RebateRate,
+    FeeRate,
+    YieldBid,
+    YieldAsk,
+    YieldBidAsk,
+    YieldLast
+}
+
+impl Encodable for HistoricalDataType {
+    fn encode(&self) -> String {
+        use HistoricalDataType::*;
+        match self {
+            Trades => "TRADES\0",
+            Midpoint => "MIDPOINT\0",
+            Bid => "BID\0",
+            Ask => "ASK\0",
+            BidAsk => "BID_ASK\0",
+            HistoricalVolatility => "HISTORICAL_VOLATILITY\0",
+            OptionImpliedVolatility => "OPTION_IMPLIED_VOLATILITY\0",
+            RebateRate => "REBATE_RATE\0",
+            HistoricalDataType::FeeRate => "FEE_RATE\0",
+            HistoricalDataType::YieldBid => "YIELD_BID\0",
+            HistoricalDataType::YieldAsk => "YIELD_ASK\0",
+            HistoricalDataType::YieldBidAsk => "YIELD_BID_ASK\0",
+            HistoricalDataType::YieldLast => "YIELD_LAST\0"
+
+        }.to_string()
+    }
+}
+
+pub enum HistoricalDataBarSize {
+    OneSec,
+    FiveSecs,
+    TenSecs,
+    FifteenSecs,
+    ThirtySecs,
+    OneMin,
+    TwoMins,
+    ThreeMins,
+    FiveMins,
+    TenMins,
+    FifteenMins,
+    TwentyMins,
+    ThirtyMins,
+    OneHour,
+    TwoHours,
+    ThreeHours,
+    FourHours,
+    EightHours,
+    OneDay,
+    OneWeek,
+    OneMonth
+}
+
+impl Encodable for HistoricalDataBarSize {
+    fn encode(&self) -> String {
+        use HistoricalDataBarSize::*;
+        match self {
+            OneSec => "1 secs\0",
+            FiveSecs => "5 secs\0",
+            TenSecs => "10 secs\0",
+            FifteenSecs => "15 secs\0",
+            ThirtySecs => "30 secs\0",
+            OneMin => "1 min\0",
+            TwoMins => "2 mins\0",
+            ThreeMins => "3 mins\0",
+            FiveMins => "5 mins\0",
+            TenMins => "10 mins\0",
+            FifteenMins => "15 mins\0",
+            TwentyMins => "20 mins\0",
+            ThirtyMins => "30 mins\0",
+            OneHour => "1 hour\0",
+            TwoHours => "2 hours\0",
+            ThreeHours => "3 hours\0",
+            FourHours => "4 hours\0",
+            EightHours => "8 hours\0",
+            OneDay => "1 day\0",
+            OneWeek => "1 week\0",
+            OneMonth => "1 month\0",
+        }.to_string()
+    }
+}
+
+pub enum HistoricalDataDuration {
+    Seconds(i32),
+    Days(i32),
+    Weeks(i32),
+    Months(i32),
+    Years(i32)
+}
+
+impl Encodable for HistoricalDataDuration {
+    fn encode(&self) -> String {
+        use HistoricalDataDuration::*;
+        match self {
+            Seconds(count) => count.to_string() + " S\0",
+            Days(count) => count.to_string() + " D\0",
+            Weeks(count) => count.to_string() + " W\0",
+            Months(count) => count.to_string() + " M\0",
+            Years(count) => count.to_string() + " Y\0"
+        }
+    }
+}

@@ -144,8 +144,8 @@ async fn historical_data() {
     };
     let end_dt = Utc.datetime_from_str("2020-03-01 00:00:00", "%Y-%m-%d %H:%M:%S");
 
-    match &client.req_historical_data(&contract, &end_dt.unwrap(), "1 M", "1 day",
-    "MIDPOINT", true).await {
+    match &client.req_historical_data(&contract, &end_dt.unwrap(), HistoricalDataDuration::Months(1), HistoricalDataBarSize::OneDay,
+    HistoricalDataType::Midpoint, true).await {
         Ok(bars) => {
             assert!(bars.n_bars > 0);
         },

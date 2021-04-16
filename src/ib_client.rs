@@ -429,7 +429,7 @@ impl IBClient
     }
 
     pub async fn req_historical_data<Tz: TimeZone> (&mut self, contract: &ib_contract::Contract, end_date_time: &DateTime<Tz>, 
-        duration: &str, bar_period: &str, what_to_show: &str, use_rth: bool) -> AsyncResult<bars::BarSeries>
+        duration: HistoricalDataDuration, bar_period: HistoricalDataBarSize, what_to_show: HistoricalDataType, use_rth: bool) -> AsyncResult<bars::BarSeries>
         where
         <Tz as TimeZone>::Offset: std::fmt::Display
         {
@@ -437,11 +437,31 @@ impl IBClient
         let id = self.get_next_req_id();
         msg.push_str(&id.encode());
         msg.push_str(&contract.encode_for_hist_data());
-        msg.push_str(&end_date_time.format("%Y%m%d %H:%M:%S %Z").to_string().encode());
+        msg.push_str(&end_date_time.format("%Y%m%d %H:%M:%S").to_string().encode());
         msg.push_str(&bar_period.encode());
         msg.push_str(&duration.encode());
         msg.push_str(&use_rth.encode());
         msg.push_str(&what_to_show.encode());
+        msg.push_str("1\00\0\0");
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.req_tx.send(Request::Bars{id, sender: resp_tx});
+        self.write_tx.send(msg).await?;
+        match resp_rx.await {
+            Ok(bars) => Ok(bars),
+            Err(err) => Err(Box::new(err))
+        }
+    }
+
+    pub async fn req_adj_historical_data(&mut self, contract: &ib_contract::Contract, duration: HistoricalDataDuration, bar_period: HistoricalDataBarSize, use_rth: bool) -> AsyncResult<bars::BarSeries> {
+        let mut msg = Outgoing::ReqHistoricalData.encode();
+        let id = self.get_next_req_id();
+        msg.push_str(&id.encode());
+        msg.push_str(&contract.encode_for_hist_data());
+        msg.push_str("\0");
+        msg.push_str(&bar_period.encode());
+        msg.push_str(&duration.encode());
+        msg.push_str(&use_rth.encode());
+        msg.push_str("ADJUSTED_LAST\0");
         msg.push_str("1\00\0\0");
         let (resp_tx, resp_rx) = oneshot::channel();
         self.req_tx.send(Request::Bars{id, sender: resp_tx});
