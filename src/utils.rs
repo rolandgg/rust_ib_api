@@ -67,7 +67,7 @@ pub mod ib_message {
     <T as std::str::FromStr>::Err: std::fmt::Debug,
     {
         let str_val = stream.next().unwrap();
-        println!("{}", str_val);
+        //println!("{}", str_val);
         match str_val {
             "" | "1.7976931348623157E308" => return None,
             _ => match T::decode_str(str_val) {

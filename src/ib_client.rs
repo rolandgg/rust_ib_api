@@ -13,6 +13,7 @@ use crate::frame::IBFrame;
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::{error::Error, fmt};
 
 use rust_decimal::prelude::*;
 
@@ -29,12 +30,28 @@ use std::sync::atomic::{AtomicUsize,AtomicI32};
 use futures::future::{Abortable, AbortHandle, Aborted};
 
 enum Request {
-    ContractDetails{id: usize, sender: oneshot::Sender<Vec<ib_contract::ContractDetails>>},
     OrderID(oneshot::Sender<i32>),
-    Order{id: i32, sender: oneshot::Sender<order::OrderTracker>},
-    Ticker{id: usize, sender: oneshot::Sender<ticker::Ticker>},
-    Bars{id: usize, sender: oneshot::Sender<bars::BarSeries>}
+    ReqWithID{id: i32, sender: oneshot::Sender<Response>},
 }
+enum Response {
+    ContractDetails(Vec<ib_contract::ContractDetails>),
+    Order(order::OrderTracker),
+    Ticker(ticker::Ticker),
+    Bars(bars::BarSeries),
+    Empty
+}
+
+#[derive(Debug)]
+struct ResponseError;
+
+impl Error for ResponseError {}
+
+impl fmt::Display for ResponseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Invalid response type!") // user-facing output
+    }
+}
+
 pub struct IBClient
 {
     client_id: i32,
@@ -45,8 +62,9 @@ pub struct IBClient
     req_tx: crossbeam::channel::Sender<Request>,
     server_version: i32,
     account: account::AccountReceiver,
-    next_req_id: AtomicUsize,
-    next_order_id: AtomicI32,
+    next_req_id: i32,
+    next_order_id: i32,
+    mkt_data_setting: MarketDataType
 }
 
 impl IBClient
@@ -71,7 +89,7 @@ impl IBClient
         let mut it = msg.split("\0");
         let server_version = it.next().unwrap().parse().unwrap();
 
-        println!("{:?}", server_version);
+        //println!("{:?}", server_version);
         let mut msg = Outgoing::StartApi.encode();
         let version : i32 = 2;
         //start API
@@ -111,19 +129,16 @@ impl IBClient
         let (reader_abort_handle, reader_abort_registration) = AbortHandle::new_pair();
         let reader_fut = Abortable::new(async move {
             //caches
-            let mut positions_cache: Vec<account::Position> = Vec::new();
-            let mut contract_details_cache: HashMap<usize,Vec<ib_contract::ContractDetails>> = HashMap::new();
-            let mut executions_cache: HashMap<String, i32> = HashMap::new();
+            let mut positions_cache= Vec::new();
+            let mut contract_details_cache = HashMap::new();
+            let mut executions_cache = HashMap::new();
             //pending requests
-            let mut order_id_reqs: VecDeque<oneshot::Sender<i32>> = VecDeque::new();
-            let mut contract_details_reqs: HashMap<usize, oneshot::Sender<Vec<ib_contract::ContractDetails>>> = HashMap::new();
-            let mut orders: HashMap<i32, oneshot::Sender<order::OrderTracker>> = HashMap::new();
-            let mut ticker_reqs: HashMap<usize, oneshot::Sender<ticker::Ticker>> = HashMap::new();
-            let mut bar_reqs: HashMap<usize, oneshot::Sender<bars::BarSeries>>  = HashMap::new();
+            let mut order_id_reqs = VecDeque::new();
+            let mut requests = HashMap::new();
             //open order trackers
-            let mut order_trackers: HashMap<i32, order::OrderTrackerSender> = HashMap::new();
+            let mut order_trackers = HashMap::new();
             //open tickers
-            let mut tickers: HashMap<usize, ticker::TickerSender> = HashMap::new();
+            let mut tickers = HashMap::new();
 
 
             loop {
@@ -133,19 +148,13 @@ impl IBClient
                         Ok(req) => match req {
                             Request::OrderID(sender) => {
                                 order_id_reqs.push_back(sender)},
-                            Request::ContractDetails{id,sender} => {
-                                contract_details_reqs.insert(id, sender);},
-                            Request::Order{id, sender} => {
-                                orders.insert(id, sender);},
-                            Request::Ticker{id, sender,} => {
-                                ticker_reqs.insert(id, sender);},
-                            Request::Bars{id, sender} => {
-                                bar_reqs.insert(id, sender);}
+                            Request::ReqWithID{id,sender} => {
+                                requests.insert(id, sender);}
                         },
                         Err(_) => break
                     }
                 };
-                println!("{:?}", String::from_utf8_lossy(&msg));
+                //println!("{:?}", String::from_utf8_lossy(&msg));
                 let frame = IBFrame::parse(&msg);
                 match frame {
                     IBFrame::AccountCode(code) => account_tx.account_code.send(code).unwrap(),
@@ -174,11 +183,12 @@ impl IBClient
                         contract_details_cache.get_mut(&id).unwrap().push(details);
                     },
                     IBFrame::ContractDetailsEnd(req_id) => {
-                        match contract_details_reqs.remove_entry(&req_id) {
+                        match requests.remove_entry(&req_id) {
                             Some((_, sender)) => {
+
                                 let _res = match contract_details_cache.remove_entry(&req_id) {
-                                    Some((_, details)) => sender.send(details),
-                                    None => sender.send(Vec::new())
+                                    Some((_, details)) => sender.send(Response::ContractDetails(details)),
+                                    None => sender.send(Response::Empty)
                                 };
 
                             },
@@ -187,10 +197,10 @@ impl IBClient
                     },
                     IBFrame::OpenOrder{order,order_state} => {
                         let order_id = order.order_id;
-                        match orders.remove_entry(&order_id) {
+                        match requests.remove_entry(&order_id) {
                             Some((_, sender)) => {
                                 let (order_sender, order_receiver) = order::OrderTracker::new(order, order_state);
-                                sender.send(order_receiver);
+                                sender.send(Response::Order(order_receiver));
                                 order_trackers.insert(order_id, order_sender);
                             },
                             None => {
@@ -227,10 +237,10 @@ impl IBClient
                         }
                     }
                     IBFrame::PriceTick{id, kind, price, size, ..} => {
-                        if let Some((_, req)) = ticker_reqs.remove_entry(&id) {
+                        if let Some((_, req)) = requests.remove_entry(&id) {
                             let (ticker_sender, ticker) = ticker::Ticker::new();
                             tickers.insert(id, ticker_sender);
-                            if let Ok(()) = req.send(ticker) {} else {continue}; //else: request is dead
+                            if let Ok(()) = req.send(Response::Ticker(ticker)) {} else {continue}; //else: request is dead
                         }
                         if let Some(t) = tickers.get_mut(&id) {
                             let ok = match kind {
@@ -256,10 +266,10 @@ impl IBClient
                         };
                     },
                     IBFrame::SizeTick{id, kind, size} => {
-                        if let Some((_, req)) = ticker_reqs.remove_entry(&id) {
+                        if let Some((_, req)) = requests.remove_entry(&id) {
                             let (ticker_sender, ticker) = ticker::Ticker::new();
                             tickers.insert(id, ticker_sender);
-                            if let Ok(()) = req.send(ticker) {} else {continue}; //else: request is dead
+                            if let Ok(()) = req.send(Response::Ticker(ticker)) {} else {continue}; //else: request is dead
                         }
                         if let Some(t) = tickers.get_mut(&id) {
                             let ok = match kind {
@@ -286,10 +296,10 @@ impl IBClient
                         };
                     },
                     IBFrame::GenericTick{id, kind, val} => {
-                        if let Some((_, req)) = ticker_reqs.remove_entry(&id) {
+                        if let Some((_, req)) = requests.remove_entry(&id) {
                             let (ticker_sender, ticker) = ticker::Ticker::new();
                             tickers.insert(id, ticker_sender);
-                            if let Ok(()) = req.send(ticker) {} else {continue}; //else: request is dead
+                            if let Ok(()) = req.send(Response::Ticker(ticker)) {} else {continue}; //else: request is dead
                         }
                         if let Some(t) = tickers.get_mut(&id) {
                             let ok = match kind {
@@ -303,9 +313,12 @@ impl IBClient
                         };
                     },
                     IBFrame::Bars{id, data} => {
-                        if let Some((_, req)) = bar_reqs.remove_entry(&id) {
-                            req.send(data);
+                        if let Some((_, req)) = requests.remove_entry(&id) {
+                            req.send(Response::Bars(data));
                         }
+                    }
+                    IBFrame::Error{id, code, msg} => {
+
                     }
                     _ => ()
                 };
@@ -321,8 +334,9 @@ impl IBClient
             req_tx,
             server_version,
             account,
-            next_req_id: AtomicUsize::new(0),
-            next_order_id: AtomicI32::new(0)
+            next_req_id: 0,
+            next_order_id: 0,
+            mkt_data_setting: MarketDataType::RealTime
         };
         //subscribe to account updates
         msg = Outgoing::ReqAcctData.encode();
@@ -337,7 +351,7 @@ impl IBClient
         client.req_tx.send(Request::OrderID(resp_tx))?;
         client.write_tx.send(msg).await?;
         match resp_rx.await {
-            Ok(id) => *client.next_order_id.get_mut() = id,
+            Ok(id) => client.next_order_id = id,
             Err(err) => return Err(Box::new(err))
         }
         Ok(client)
@@ -355,18 +369,14 @@ impl IBClient
         *self.account.excess_liquidity.borrow()
     }
 
-    fn get_next_req_id(&mut self) -> usize {
-        let req_id = self.next_req_id.get_mut();
-        let id = *req_id;
-        *req_id += 1;
-        id
+    fn get_next_req_id(&mut self) -> i32 {
+        self.next_req_id += 1;
+        self.next_req_id
     }
 
     fn get_next_order_id(&mut self) -> i32 {
-        let order_id = self.next_order_id.get_mut();
-        let id = *order_id;
-        *order_id += 1;
-        id
+        self.next_order_id += 1;
+        self.next_order_id
     }
 
     pub async fn req_contract_details(&mut self, contract: &ib_contract::Contract) -> AsyncResult<Vec<ib_contract::ContractDetails>> {
@@ -376,10 +386,16 @@ impl IBClient
         msg.push_str(&id.encode());
         msg.push_str(&contract.encode());
         let (rep_tx, rep_rx) = oneshot::channel();
-        self.req_tx.send(Request::ContractDetails{id, sender: rep_tx})?;
+        self.req_tx.send(Request::ReqWithID{id, sender: rep_tx})?;
         self.write_tx.send(msg).await?;
         match rep_rx.await {
-            Ok(result) => Ok(result),
+            Ok(response) => 
+            {
+                match response {
+                    Response::ContractDetails(contracts) => Ok(contracts),
+                    _ => Err(Box::new(ResponseError{}))
+                }
+            },
             Err(error) => Err(Box::new(error))
         }
     }
@@ -390,40 +406,56 @@ impl IBClient
         msg.push_str(&id.encode());
         msg.push_str(&order.encode());
         let (rep_tx, rep_rx) = oneshot::channel();
-        self.req_tx.send(Request::Order{id, sender: rep_tx})?;
+        self.req_tx.send(Request::ReqWithID{id, sender: rep_tx})?;
         println!("{:?}", msg);
         self.write_tx.send(msg).await?;
         match rep_rx.await {
-            Ok(result) => Ok(result),
+            Ok(response) => 
+            {
+                match response {
+                    Response::Order(tracker) => Ok(tracker),
+                    _ => Err(Box::new(ResponseError{}))
+                }
+            },
             Err(error) => Err(Box::new(error))
         }
     }
 
     pub async fn req_market_data(&mut self, contract: &ib_contract::Contract, snapshot: bool, regulatory: bool, 
-        additional_data: Vec<GenericTickType>) -> AsyncResult<ticker::Ticker> {
+        additional_data: Option<Vec<GenericTickType>>) -> AsyncResult<ticker::Ticker> {
         let mut msg = Outgoing::ReqMktData.encode();
         msg.push_str("11\0"); //version
         let id = self.get_next_req_id();
         msg.push_str(&id.encode());
         msg.push_str(&contract.encode_for_ticker());
         msg.push_str("0\0");
-        for i in 0..additional_data.len()-1 {
-            msg.push_str(&additional_data[i].encode());
-            msg.push_str(",");
+        
+        if let Some(add_data) = additional_data {
+            for i in 0..add_data.len()-1 {
+                msg.push_str(&add_data[i].encode());
+                msg.push_str(",");
+            }
+            if let Some(gen_tick) = add_data.last() {
+                msg.push_str(&gen_tick.encode());
+            }
         }
-        if let Some(gen_tick) = additional_data.last() {
-            msg.push_str(&gen_tick.encode());
-        }
+        
         msg.push_str("\0"); //generic tick data
         msg.push_str(&snapshot.encode());
         msg.push_str(&regulatory.encode());
         msg.push_str("\0");
         println!("{:?}", msg);
         let (req_tx, req_rx) = oneshot::channel();
-        self.req_tx.send(Request::Ticker{id, sender: req_tx})?;
+        self.req_tx.send(Request::ReqWithID{id, sender: req_tx})?;
         self.write_tx.send(msg).await?;
         match req_rx.await {
-            Ok(ticker) => Ok(ticker),
+            Ok(response) => 
+            {
+                match response {
+                    Response::Ticker(ticker) => Ok(ticker),
+                    _ => Err(Box::new(ResponseError{}))
+                }
+            },
             Err(err) => Err(Box::new(err))
         }
     }
@@ -444,10 +476,16 @@ impl IBClient
         msg.push_str(&what_to_show.encode());
         msg.push_str("1\00\0\0");
         let (resp_tx, resp_rx) = oneshot::channel();
-        self.req_tx.send(Request::Bars{id, sender: resp_tx});
+        self.req_tx.send(Request::ReqWithID{id, sender: resp_tx});
         self.write_tx.send(msg).await?;
         match resp_rx.await {
-            Ok(bars) => Ok(bars),
+            Ok(response) => 
+            {
+                match response {
+                    Response::Bars(bars) => Ok(bars),
+                    _ => Err(Box::new(ResponseError{}))
+                }
+            },
             Err(err) => Err(Box::new(err))
         }
     }
@@ -464,12 +502,36 @@ impl IBClient
         msg.push_str("ADJUSTED_LAST\0");
         msg.push_str("1\00\0\0");
         let (resp_tx, resp_rx) = oneshot::channel();
-        self.req_tx.send(Request::Bars{id, sender: resp_tx});
+        self.req_tx.send(Request::ReqWithID{id, sender: resp_tx});
         self.write_tx.send(msg).await?;
         match resp_rx.await {
-            Ok(bars) => Ok(bars),
+            Ok(response) => 
+            {
+                match response {
+                    Response::Bars(bars) => Ok(bars),
+                    _ => Err(Box::new(ResponseError{}))
+                }
+            },
             Err(err) => Err(Box::new(err))
         }
+    }
+
+    pub async fn set_mkt_data_delayed(&mut self) -> AsyncResult<()> {
+        let mut msg = Outgoing::ReqMarketDataType.encode();
+        msg.push_str("1\0");
+        msg.push_str(&MarketDataType::Delayed.encode());
+        self.write_tx.send(msg).await?;
+        self.mkt_data_setting = MarketDataType::Delayed;
+        Ok(())
+    }
+
+    pub async fn set_mkt_data_real_time(&mut self) -> AsyncResult<()> {
+        let mut msg = Outgoing::ReqMarketDataType.encode();
+        msg.push_str("1\0");
+        msg.push_str(&MarketDataType::RealTime.encode());
+        self.write_tx.send(msg).await?;
+        self.mkt_data_setting = MarketDataType::RealTime;
+        Ok(())
     }
 
 }

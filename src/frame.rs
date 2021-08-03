@@ -33,9 +33,9 @@ pub enum IBFrame {
     PortfolioValue(Position),
     CurrentTime(NaiveDateTime),
     ContractDetails{
-        req_id: usize, contract_details: ib_contract::ContractDetails
+        req_id: i32, contract_details: ib_contract::ContractDetails
     },
-    ContractDetailsEnd(usize),
+    ContractDetailsEnd(i32),
     OrderID(i32),
     OpenOrder{
         order: order::Order, order_state: order::OrderState
@@ -43,11 +43,12 @@ pub enum IBFrame {
     Execution(order::Execution),
     CommissionReport(order::CommissionReport),
     OrderStatus(order::OrderStatus),
-    PriceTick{id: usize, kind: TickType, price: f64, size: Option<i32>, attributes: EnumSet<TickAttribute>},
-    SizeTick{id: usize, kind: TickType, size: i32},
-    StringTick{id: usize, kind: TickType, val: Option<String>},
-    GenericTick{id: usize, kind: TickType, val: f64},
-    Bars{id: usize, data: bars::BarSeries},
+    PriceTick{id: i32, kind: TickType, price: f64, size: Option<i32>, attributes: EnumSet<TickAttribute>},
+    SizeTick{id: i32, kind: TickType, size: i32},
+    StringTick{id: i32, kind: TickType, val: Option<String>},
+    GenericTick{id: i32, kind: TickType, val: f64},
+    Bars{id: i32, data: bars::BarSeries},
+    Error{id: i32, code: i32, msg: String},
     NotImplemented
 }
 
@@ -117,7 +118,7 @@ impl IBFrame {
             },
             Incoming::ContractData => {
                 it.next(); //skip version
-                let req_id : usize = decode(&mut it).unwrap();
+                let req_id = decode(&mut it).unwrap();
                 let mut contract = ib_contract::Contract {
                     symbol : decode(&mut it),
                     sec_type: decode(&mut it),
@@ -549,6 +550,14 @@ impl IBFrame {
                     Some(bar_data)
                 } else {None};
                 IBFrame::Bars{id, data: bars::BarSeries{start_dt, end_dt, n_bars, data}}
+            }
+            Incoming::ErrMsg => {
+                it.next(); //skip version
+                IBFrame::Error {
+                    id: decode(&mut it).unwrap(),
+                    code: decode(&mut it).unwrap(),
+                    msg: decode(&mut it).unwrap()
+                }
             }
             _ => IBFrame::NotImplemented
         }

@@ -120,10 +120,59 @@ async fn market_data() {
         ..Default::default()
     };
     match &client.req_market_data(&contract, false, false,
-         vec![GenericTickType::ShortableData]).await {
+         Some(vec![GenericTickType::ShortableData])).await {
         Ok(ticker) => {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             assert!(ticker.midpoint().is_some());
+        }
+        Err(_error) => panic!("Market data request not successful")
+    }
+}
+
+#[tokio::test]
+async fn delayed_market_data() {
+    let mut client = match IBClient::connect(4002, 4, "").await {
+        Ok(client) => client,
+        Err(_error) => panic!("Connection not successful!")
+    };
+    client.set_mkt_data_delayed().await;
+    let contract = Contract {
+        symbol: Some("AAPL".to_string()),
+        exchange: Some("SMART".to_string()),
+        sec_type: Some(SecType::Stock),
+        currency: Some("USD".to_string()),
+        ..Default::default()
+    };
+    match &client.req_market_data(&contract, false, false,
+         Some(vec![GenericTickType::ShortableData])).await {
+        Ok(ticker) => {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            assert!(ticker.midpoint().is_some());
+            println!("{:?}", ticker.midpoint())
+        }
+        Err(_error) => panic!("Market data request not successful")
+    }
+}
+
+#[tokio::test]
+async fn snapshot_data() {
+    let mut client = match IBClient::connect(4002, 3, "").await {
+        Ok(client) => client,
+        Err(_error) => panic!("Connection not successful!")
+    };
+    let contract = Contract {
+        symbol: Some("AAPL".to_string()),
+        exchange: Some("SMART".to_string()),
+        sec_type: Some(SecType::Stock),
+        currency: Some("USD".to_string()),
+        ..Default::default()
+    };
+    match &client.req_market_data(&contract, true, false,
+         None).await {
+        Ok(ticker) => {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            assert!(ticker.midpoint().is_some());
+            println!("{:?}", ticker.midpoint())
         }
         Err(_error) => panic!("Market data request not successful")
     }
