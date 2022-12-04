@@ -7,7 +7,14 @@ use chrono::{TimeZone, Utc, DateTime};
 use rs_ib_api::ib_enums::*;
 use rust_decimal::prelude::*;
 
-
+#[tokio::test]
+async fn connection() {
+    let mut client = match IBClient::connect(4002, 1, "").await {
+        Ok(client) => client,
+        Err(_error) => panic!("Connection not successful!")
+    };
+    time::sleep(time::Duration::from_secs(60)).await;
+}
 
 #[tokio::test]
 async fn contract_details() {

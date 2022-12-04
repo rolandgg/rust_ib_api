@@ -97,34 +97,16 @@ impl IBClient
         msg.push_str(&client_id.encode());
         msg.push_str(&optional_capabilities.to_string().encode());
         writer.write(&msg).await?;
-        let client_id = client_id;
+        //set up required channels
         let (tx, mut rx) = mpsc::channel(64);
         let write_tx: mpsc::Sender<String> = tx.clone();
         let (req_tx, req_rx) = channel::bounded(100);
-
-
-        //start the writer task managing the write half of the socket
-        let (writer_abort_handle, writer_abort_registration) = AbortHandle::new_pair();
-        let writer_fut = Abortable::new(async move {
-            loop {
-                let msg = rx.recv().await.unwrap();
-                writer.write(&msg).await.expect("Could not write to socket.");
-            }
-        }, writer_abort_registration);
-        let _writer_task = tokio::spawn(writer_fut);
-
-        //start the keep alive task to send a message across the socket every minute
-        let (keep_alive_abort_handle, keep_alive_abort_registration) = AbortHandle::new_pair();
-        let keep_alive_fut = Abortable::new(async move{
-            let mut msg = Outgoing::ReqCurrentTime.encode();
-            msg.push_str(&1i32.encode());
-            loop{
-                tx.send(msg.clone()).await.expect("Could not send heartbeat");
-                time::sleep(time::Duration::from_secs(60)).await;
-            }
-        }, keep_alive_abort_registration);
-        let _keep_alive_task = tokio::spawn(keep_alive_fut);
         let (account_tx, account) = account::init_account_channel();
+        //the server will send the next order ID unsolicited, just put a request on the channel to receive it
+        //when the reader task starts working
+        let (order_id_tx, order_id_rx) = oneshot::channel();
+        req_tx.send(Request::OrderID(order_id_tx))?;
+
         //start the reader task
         let (reader_abort_handle, reader_abort_registration) = AbortHandle::new_pair();
         let reader_fut = Abortable::new(async move {
@@ -143,6 +125,7 @@ impl IBClient
 
             loop {
                 let msg = reader.read().await.unwrap();
+                println!("{}",String::from_utf8_lossy(&msg));
                 loop {
                     match req_rx.try_recv() {
                         Ok(req) => match req {
@@ -325,6 +308,33 @@ impl IBClient
             }
         }, reader_abort_registration);
         let _reader_task = tokio::spawn(reader_fut);
+        //now await receipt of the next order id before anything else happens (ensures that the API is ready)
+        let mut next_order_id = 0;
+        match order_id_rx.await {
+            Ok(id) => next_order_id = id,
+            Err(err) => return Err(Box::new(err))
+        }
+        //start the writer task managing the write half of the socket
+        let (writer_abort_handle, writer_abort_registration) = AbortHandle::new_pair();
+        let writer_fut = Abortable::new(async move {
+            loop {
+                let msg = rx.recv().await.unwrap();
+                writer.write(&msg).await.expect("Could not write to socket.");
+            }
+        }, writer_abort_registration);
+        let _writer_task = tokio::spawn(writer_fut);
+
+        //start the keep alive task to send a message across the socket every minute
+        let (keep_alive_abort_handle, keep_alive_abort_registration) = AbortHandle::new_pair();
+        let keep_alive_fut = Abortable::new(async move{
+            let mut msg = Outgoing::ReqCurrentTime.encode();
+            msg.push_str(&1i32.encode());
+            loop{
+                tx.send(msg.clone()).await.expect("Could not send heartbeat");
+                time::sleep(time::Duration::from_secs(60)).await;
+            }
+        }, keep_alive_abort_registration);
+        let _keep_alive_task = tokio::spawn(keep_alive_fut);
         let mut client = IBClient {
             client_id,
             writer_abort_handle,
@@ -335,7 +345,7 @@ impl IBClient
             server_version,
             account,
             next_req_id: 0,
-            next_order_id: 0,
+            next_order_id,
             mkt_data_setting: MarketDataType::RealTime
         };
         //subscribe to account updates
@@ -344,16 +354,7 @@ impl IBClient
         msg.push_str(&true.encode());
         msg.push_str("\0");
         client.write_tx.send(msg).await?;
-        //get the latest order id
-        msg = Outgoing::ReqIds.encode();
-        msg.push_str("1\01\0");
-        let (resp_tx, resp_rx) = oneshot::channel();
-        client.req_tx.send(Request::OrderID(resp_tx))?;
-        client.write_tx.send(msg).await?;
-        match resp_rx.await {
-            Ok(id) => client.next_order_id = id,
-            Err(err) => return Err(Box::new(err))
-        }
+        
         Ok(client)
     }
 
