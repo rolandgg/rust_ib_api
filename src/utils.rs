@@ -179,10 +179,10 @@ pub mod ib_stream {
             }
         }
         pub async fn read(&mut self) -> AsyncResult<Vec<u8>> {
-            let bytes = self.tcp.read(&mut self.headbuf).await?;
+            let _bytes = self.tcp.read(&mut self.headbuf).await?;
             let msg_size = u32::from_be_bytes(self.headbuf);
-            let mut msg = vec![0; msg_size.try_into().unwrap()];
-            let bytes = self.tcp.read(&mut msg).await?;
+            let mut msg = vec![0; msg_size.try_into()?];
+            let _bytes = self.tcp.read(&mut msg).await?;
             Ok(msg)
         }
     }
@@ -199,7 +199,7 @@ pub mod ib_stream {
         }
 
         pub async fn write(&mut self, msg: &str) -> AsyncResult<()> {
-            self.tcp.write_all(&msg.to_ib_message().unwrap()).await?;
+            self.tcp.write_all(&msg.to_ib_message()?).await?;
             Ok(())
         }
     }

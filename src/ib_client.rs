@@ -25,6 +25,7 @@ use tokio::time;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tokio::sync::watch;
 use crossbeam::channel::{self, RecvError};
 use std::sync::atomic::{AtomicUsize,AtomicI32};
 use futures::future::{Abortable, AbortHandle, Aborted};
@@ -41,6 +42,11 @@ enum Response {
     Empty
 }
 
+enum TaskState {
+    Running,
+    Dead
+}
+
 #[derive(Debug)]
 struct ResponseError;
 
@@ -49,6 +55,15 @@ impl Error for ResponseError {}
 impl fmt::Display for ResponseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Invalid response type!") // user-facing output
+    }
+}
+#[derive(Debug)]
+struct HandShakeError;
+
+impl Error for HandShakeError {}
+impl fmt::Display for HandShakeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Hand shake to establish server connection failed") // user-facing output
     }
 }
 
@@ -69,6 +84,45 @@ pub struct IBClient
 
 impl IBClient
 {
+    async fn connect_socket(writer: &mut ib_stream::IBWriter, reader: &mut ib_stream::IBReader) -> AsyncResult<i32> {
+        //initiate handshake
+        writer.write_raw(b"API\0").await?;
+        let mut valid_versions = constants::MIN_CLIENT_VER.to_string();
+        valid_versions.push_str("..");
+        valid_versions.push_str(&constants::MAX_CLIENT_VER.to_string());
+        writer.write(&valid_versions).await?;
+        //await handshake response
+        //according to official python api, some junk messages might arrive before the server version
+        //we attempt to read the valid message 10 times
+        let mut reads = 10;
+        loop {
+            let msg = reader.read().await?;
+            let msg = String::from_utf8_lossy(&msg);
+            let fields: Vec<&str> = msg.split("\0").collect();
+            if fields.len() == 3 {
+                match fields[0].parse() {
+                    Ok(v) => return Ok(v),
+                    Err(_) => return Err(Box::new(HandShakeError))
+                }
+            }
+            reads -= 1;
+            if reads <= 0 {
+                return Err(Box::new(HandShakeError));
+            }
+        }
+
+    }
+
+    async fn start_api(writer: &mut ib_stream::IBWriter, client_id: i32, optional_capabilities: &str) ->AsyncResult<()> {
+        let mut msg = Outgoing::StartApi.encode();
+        let version : i32 = 2;
+        //start API
+        msg.push_str(&version.encode());
+        msg.push_str(&client_id.encode());
+        msg.push_str(&optional_capabilities.to_string().encode());
+        writer.write(&msg).await?;
+        Ok(())
+    }
 
     pub async fn connect(port: i32, client_id: i32, optional_capabilities: &str) -> AsyncResult<Self> {
 
@@ -78,30 +132,18 @@ impl IBClient
         let ( recv, trans) = stream.into_split();
         let mut writer = ib_stream::IBWriter::new(trans);
         let mut reader = ib_stream::IBReader::new(recv);
-        //initiate handshake
-        writer.write_raw(b"API\0").await?;
-        let mut valid_versions = constants::MIN_CLIENT_VER.to_string();
-        valid_versions.push_str("..");
-        valid_versions.push_str(&constants::MAX_CLIENT_VER.to_string());
-        writer.write(&valid_versions).await?;
-        let msg = reader.read().await?;
-        let msg = String::from_utf8_lossy(&msg);
-        let mut it = msg.split("\0");
-        let server_version = it.next().unwrap().parse().unwrap();
-
+        let server_version = IBClient::connect_socket(&mut writer, &mut reader).await?;
+        
         //println!("{:?}", server_version);
-        let mut msg = Outgoing::StartApi.encode();
-        let version : i32 = 2;
-        //start API
-        msg.push_str(&version.encode());
-        msg.push_str(&client_id.encode());
-        msg.push_str(&optional_capabilities.to_string().encode());
-        writer.write(&msg).await?;
+        IBClient::start_api(&mut writer, client_id, optional_capabilities).await?;
+
         //set up required channels
         let (tx, mut rx) = mpsc::channel(64);
         let write_tx: mpsc::Sender<String> = tx.clone();
         let (req_tx, req_rx) = channel::bounded(100);
         let (account_tx, account) = account::init_account_channel();
+        let (reader_state_tx, reader_state_rx) = watch::channel(Some(TaskState::Running));
+
         //the server will send the next order ID unsolicited, just put a request on the channel to receive it
         //when the reader task starts working
         let (order_id_tx, order_id_rx) = oneshot::channel();
@@ -124,7 +166,17 @@ impl IBClient
 
 
             loop {
-                let msg = reader.read().await.unwrap();
+                let msg;
+                match reader.read().await {
+                    Ok(m) => msg = m,
+                    Err(_) => {
+                        //on reader error, the socket is either disconnected or the message head could not
+                        //be parsed, which is also non-recoverable, signal closure of the reader and shut
+                        //down the task
+                        let _ = reader_state_tx.send(Some(TaskState::Dead));
+                        return;
+                    }
+                }
                 println!("{}",String::from_utf8_lossy(&msg));
                 loop {
                     match req_rx.try_recv() {
@@ -349,7 +401,7 @@ impl IBClient
             mkt_data_setting: MarketDataType::RealTime
         };
         //subscribe to account updates
-        msg = Outgoing::ReqAcctData.encode();
+        let mut msg = Outgoing::ReqAcctData.encode();
         msg.push_str(&2i32.encode());
         msg.push_str(&true.encode());
         msg.push_str("\0");
