@@ -191,20 +191,56 @@ impl IBClient
                 };
                 //println!("{:?}", String::from_utf8_lossy(&msg));
                 let frame = IBFrame::parse(&msg);
+                
                 match frame {
-                    IBFrame::AccountCode(code) => account_tx.account_code.send(code).unwrap(),
-                    IBFrame::AccountType(typ) => account_tx.account_type.send(typ).unwrap(),
-                    IBFrame::AccountUpdateTime(time) => account_tx.update_time.send(time).unwrap(),
-                    IBFrame::CashBalance(cash) => account_tx.cash_balance.send(cash).unwrap(),
-                    IBFrame::EquityWithLoanValue(loan) => account_tx.equity_with_loan_value.send(loan).unwrap(),
-                    IBFrame::ExcessLiquidity(liquidity) => account_tx.excess_liquidity.send(liquidity).unwrap(),
-                    IBFrame::NetLiquidation(nav) => account_tx.net_liquidation.send(nav).unwrap(),
-                    IBFrame::UnrealizedPnL(u_pnl) => account_tx.unrealized_pnl.send(u_pnl).unwrap(),
-                    IBFrame::RealizedPnL(pnl) => account_tx.realized_pnl.send(pnl).unwrap(),
-                    IBFrame::TotalCashBalance(balance) => account_tx.total_cash_balance.send(balance).unwrap(),
+                    //all account channels are tied directly to the client, if these channels are closed, the client is deallocated
+                    //so we shut down the reader thread. Since the client is gone, there is no use in signaling the shutdown of the reader thread
+                    IBFrame::AccountCode(code) => match account_tx.account_code.send(code) {
+                        Err(_) => return,
+                        _ => ()
+                    },
+                    IBFrame::AccountType(typ) => match account_tx.account_type.send(typ){
+                        Err(_) => return,
+                        _ => ()
+                    },
+                    IBFrame::AccountUpdateTime(time) => match account_tx.update_time.send(time){
+                        Err(_) => return,
+                        _ => ()
+                    },
+                    IBFrame::CashBalance(cash) => match account_tx.cash_balance.send(cash){
+                        Err(_) => return,
+                        _ => ()
+                    },
+                    IBFrame::EquityWithLoanValue(loan) => match account_tx.equity_with_loan_value.send(loan){
+                        Err(_) => return,
+                        _ => ()
+                    },
+                    IBFrame::ExcessLiquidity(liquidity) => match account_tx.excess_liquidity.send(liquidity){
+                        Err(_) => return,
+                        _ => ()
+                    },
+                    IBFrame::NetLiquidation(nav) => match account_tx.net_liquidation.send(nav){
+                        Err(_) => return,
+                        _ => ()
+                    },
+                    IBFrame::UnrealizedPnL(u_pnl) => match account_tx.unrealized_pnl.send(u_pnl){
+                        Err(_) => return,
+                        _ => ()
+                    },
+                    IBFrame::RealizedPnL(pnl) => match account_tx.realized_pnl.send(pnl){
+                        Err(_) => return,
+                        _ => ()
+                    },
+                    IBFrame::TotalCashBalance(balance) => match account_tx.total_cash_balance.send(balance){
+                        Err(_) => return,
+                        _ => ()
+                    },
                     IBFrame::PortfolioValue(position) => positions_cache.push(position),
                     IBFrame::AccountUpdateEnd(_) => {
-                        account_tx.portfolio.send(Some(positions_cache)).unwrap();
+                        match account_tx.portfolio.send(Some(positions_cache)){
+                            Err(_) => return,
+                            _ => ()
+                        };
                         positions_cache = Vec::new();},
                     IBFrame::CurrentTime(dtime) => println!("Heartbeat at {}", dtime),
                     IBFrame::OrderID(id) => {
