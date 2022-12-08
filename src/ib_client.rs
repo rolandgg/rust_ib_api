@@ -1,7 +1,8 @@
 
+use crate::ib_contract::ContractDetails;
 use crate::ib_enums::*;
 use crate::ib_contract;
-use crate::utils::ib_message;
+//use crate::utils::ib_message;
 use crate::utils::ib_stream;
 use crate::utils::ib_stream::AsyncResult;
 use crate::utils::ib_message::Encodable;
@@ -20,15 +21,15 @@ use rust_decimal::prelude::*;
 use std::str;
 use chrono::{TimeZone, DateTime};
 //use chrono::format::ParseError;
-use tokio::task;
+//use tokio::task;
 use tokio::time;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
-use crossbeam::channel::{self, RecvError};
-use std::sync::atomic::{AtomicUsize,AtomicI32};
-use futures::future::{Abortable, AbortHandle, Aborted};
+use crossbeam::channel::{self};
+//use std::sync::atomic::{AtomicUsize,AtomicI32};
+use futures::future::{Abortable, AbortHandle};
 
 enum Request {
     OrderID(oneshot::Sender<i32>),
@@ -66,6 +67,14 @@ impl fmt::Display for HandShakeError {
         write!(f, "Hand shake to establish server connection failed") // user-facing output
     }
 }
+#[derive(Debug)]
+struct SocketError;
+impl Error for SocketError {}
+impl fmt::Display for SocketError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Socket connection to TWS/Gateway is dead.") // user-facing output
+    }
+}
 
 pub struct IBClient
 {
@@ -75,6 +84,8 @@ pub struct IBClient
     keep_alive_abort_handle: AbortHandle,
     write_tx: mpsc::Sender<String>,
     req_tx: crossbeam::channel::Sender<Request>,
+    reader_state_rx: watch::Receiver<Option<TaskState>>,
+    writer_state_rx: watch::Receiver<Option<TaskState>>,
     server_version: i32,
     account: account::AccountReceiver,
     next_req_id: i32,
@@ -123,7 +134,22 @@ impl IBClient
         writer.write(&msg).await?;
         Ok(())
     }
-
+    
+    fn is_connected(&self) -> bool {
+        if let Some(reader_state) = &*self.reader_state_rx.borrow() {
+            if let Some(writer_state) = &*self.writer_state_rx.borrow() {
+                let connected = match writer_state {
+                    TaskState::Running => match reader_state {
+                        TaskState::Running => true,
+                        TaskState::Dead => false
+                    }
+                    TaskState::Dead => false
+                };
+                return connected;
+            }
+        }
+        return false;
+    }
     pub async fn connect(port: i32, client_id: i32, optional_capabilities: &str) -> AsyncResult<Self> {
 
         let mut addr = "127.0.0.1:".to_string();
@@ -143,7 +169,7 @@ impl IBClient
         let (req_tx, req_rx) = channel::bounded(100);
         let (account_tx, account) = account::init_account_channel();
         let (reader_state_tx, reader_state_rx) = watch::channel(Some(TaskState::Running));
-
+        let (writer_state_tx, writer_state_rx) = watch::channel(Some(TaskState::Running));
         //the server will send the next order ID unsolicited, just put a request on the channel to receive it
         //when the reader task starts working
         let (order_id_tx, order_id_rx) = oneshot::channel();
@@ -154,7 +180,7 @@ impl IBClient
         let reader_fut = Abortable::new(async move {
             //caches
             let mut positions_cache= Vec::new();
-            let mut contract_details_cache = HashMap::new();
+            let mut contract_details_cache: HashMap<i32,Vec<ContractDetails>> = HashMap::new();
             let mut executions_cache = HashMap::new();
             //pending requests
             let mut order_id_reqs = VecDeque::new();
@@ -171,7 +197,7 @@ impl IBClient
                     Ok(m) => msg = m,
                     Err(_) => {
                         //on reader error, the socket is either disconnected or the message head could not
-                        //be parsed, which is also non-recoverable, signal closure of the reader and shut
+                        //be parsed, which is also non-recoverable -> signal closure of the reader and shut
                         //down the task
                         let _ = reader_state_tx.send(Some(TaskState::Dead));
                         return;
@@ -193,8 +219,10 @@ impl IBClient
                 let frame = IBFrame::parse(&msg);
                 
                 match frame {
-                    //all account channels are tied directly to the client, if these channels are closed, the client is deallocated
-                    //so we shut down the reader thread. Since the client is gone, there is no use in signaling the shutdown of the reader thread
+                    //all account channels are tied directly to the client, if these channels are closed, the client is deallocated,
+                    //so we shut down the reader thread. Since the client is gone, there is no use in signaling the shutdown of the reader thread.
+                    //Since the client kills the reader thread on Drop(), this should actually never happen
+                    //and the result of 'send' could probably just as well be ignored.
                     IBFrame::AccountCode(code) => match account_tx.account_code.send(code) {
                         Err(_) => return,
                         _ => ()
@@ -245,13 +273,17 @@ impl IBClient
                     IBFrame::CurrentTime(dtime) => println!("Heartbeat at {}", dtime),
                     IBFrame::OrderID(id) => {
                         match order_id_reqs.pop_front() {
-                            Some(sender) => sender.send(id).unwrap(),
+                            //ignore potential closure of the channel, as it just means the requestor is dead
+                            //potentially just log this event, once a logger is implemented
+                            Some(sender) => { let _ = sender.send(id);},
                             None => println!("No pending order id request.")
                         }
                     },
                     IBFrame::ContractDetails{req_id: id,contract_details: details} => {
-                        contract_details_cache.entry(id).or_insert(Vec::new());
-                        contract_details_cache.get_mut(&id).unwrap().push(details);
+                        //contract_details_cache.entry(id).or_insert(Vec::new());
+                        match contract_details_cache.get_mut(&id){
+                            Some(v) => v.push(details),
+                            None => {let _ = contract_details_cache.insert(id, vec![details]);}}
                     },
                     IBFrame::ContractDetailsEnd(req_id) => {
                         match requests.remove_entry(&req_id) {
@@ -271,47 +303,78 @@ impl IBClient
                         match requests.remove_entry(&order_id) {
                             Some((_, sender)) => {
                                 let (order_sender, order_receiver) = order::OrderTracker::new(order, order_state);
-                                sender.send(Response::Order(order_receiver));
-                                order_trackers.insert(order_id, order_sender);
+                                match sender.send(Response::Order(order_receiver)){
+                                    Ok(()) => {order_trackers.insert(order_id, order_sender);},
+                                    Err(_) => ()
+                                }
+                                
                             },
                             None => {
+                                let mut tracker_dead: bool = false;
                                 if let Some(tracker) = order_trackers.get(&order_id) {
-                                    tracker.order_state_tx.send(order_state);
-                                    tracker.order_tx.send(order);
+                                    match tracker.order_state_tx.send(order_state) {
+                                        Err(_) => {tracker_dead = true;},
+                                        _ => ()
+                                    }
+                                    match tracker.order_tx.send(order){
+                                        Err(_) => {tracker_dead = true;},
+                                        _ => ()
+                                    }
+                                }
+                                if tracker_dead {
+                                    order_trackers.remove(&order_id);
                                 }
                             }
                         }
                         
                     },
                     IBFrame::Execution(execution) => {
+                        let mut tracker_dead: bool = false;
+                        let order_id = execution.order_id;
+                        let exec_id = execution.exec_id.clone();
                         if let Some(tracker) = order_trackers.get_mut(&execution.order_id) {
-                            executions_cache.insert(execution.exec_id.clone(), execution.order_id);
-                            tracker.executions_tx.send(execution).unwrap();
+                            
+                            match tracker.executions_tx.send(execution){
+                                Err(_) => {tracker_dead = true;},
+                                Ok(()) => {executions_cache.insert(exec_id, order_id);}
+                            }
+                        }
+                        if tracker_dead {
+                            order_trackers.remove(&order_id);
                         }
                     },
                     IBFrame::CommissionReport(report) => {
+                        let mut tracker_dead = false;
                         if let Some((_,order_id)) = executions_cache.remove_entry(&report.exec_id) {
                             if let Some(tracker) = order_trackers.get_mut(&order_id) {
                                 match tracker.commission_reports_tx.send(report) {
-                                    Err(error) => println!("{:?}", error),
+                                    Err(_error) => tracker_dead = true,
                                     _ => ()
                                 }
                             }
+                            if tracker_dead {
+                                order_trackers.remove(&order_id);
+                            }
                         }
+
                     },
                     IBFrame::OrderStatus(status) => {
+                        let mut tracker_dead = false;
+                        let order_id = status.order_id;
                         if let Some(tracker) = order_trackers.get(&status.order_id) {
                             match tracker.order_status_tx.send(Some(status)) {
-                                Err(error) => println!("Order Status send error"),
+                                Err(_error) => tracker_dead = true,
                                 _ => ()
                             }
+                        }
+                        if tracker_dead {
+                            order_trackers.remove(&order_id);
                         }
                     }
                     IBFrame::PriceTick{id, kind, price, size, ..} => {
                         if let Some((_, req)) = requests.remove_entry(&id) {
                             let (ticker_sender, ticker) = ticker::Ticker::new();
-                            tickers.insert(id, ticker_sender);
-                            if let Ok(()) = req.send(Response::Ticker(ticker)) {} else {continue}; //else: request is dead
+                            if let Ok(()) = req.send(Response::Ticker(ticker)) {tickers.insert(id, ticker_sender);} else {continue}; //else: request is dead
                         }
                         if let Some(t) = tickers.get_mut(&id) {
                             let ok = match kind {
@@ -333,7 +396,7 @@ impl IBClient
                                 }
                                 _ => true
                             };
-                            if !ok {tickers.remove_entry(&id);}    
+                            if !ok {tickers.remove_entry(&id);}    //ticker dead
                         };
                     },
                     IBFrame::SizeTick{id, kind, size} => {
@@ -363,7 +426,7 @@ impl IBClient
                                 }
                                 _ => true
                             };
-                            if !ok {tickers.remove_entry(&id);}    
+                            if !ok {tickers.remove_entry(&id);}    //ticker dead
                         };
                     },
                     IBFrame::GenericTick{id, kind, val} => {
@@ -385,7 +448,7 @@ impl IBClient
                     },
                     IBFrame::Bars{id, data} => {
                         if let Some((_, req)) = requests.remove_entry(&id) {
-                            req.send(Response::Bars(data));
+                            let _ = req.send(Response::Bars(data));
                         }
                     }
                     IBFrame::Error{id, code, msg} => {
@@ -406,8 +469,13 @@ impl IBClient
         let (writer_abort_handle, writer_abort_registration) = AbortHandle::new_pair();
         let writer_fut = Abortable::new(async move {
             loop {
-                let msg = rx.recv().await.unwrap();
-                writer.write(&msg).await.expect("Could not write to socket.");
+                match rx.recv().await {
+                    Some(msg) => match writer.write(&msg).await {
+                        Err(_) => {let _ = writer_state_tx.send(Some(TaskState::Dead)); return;}
+                        _ => ()
+                    },
+                    None => {let _ = writer_state_tx.send(Some(TaskState::Dead)); return;}
+                }
             }
         }, writer_abort_registration);
         let _writer_task = tokio::spawn(writer_fut);
@@ -418,7 +486,9 @@ impl IBClient
             let mut msg = Outgoing::ReqCurrentTime.encode();
             msg.push_str(&1i32.encode());
             loop{
-                tx.send(msg.clone()).await.expect("Could not send heartbeat");
+                if let Err(_) = tx.send(msg.clone()).await {
+                    return;
+                }
                 time::sleep(time::Duration::from_secs(60)).await;
             }
         }, keep_alive_abort_registration);
@@ -430,6 +500,8 @@ impl IBClient
             keep_alive_abort_handle,
             write_tx,
             req_tx,
+            reader_state_rx,
+            writer_state_rx,
             server_version,
             account,
             next_req_id: 0,
@@ -469,6 +541,9 @@ impl IBClient
     }
 
     pub async fn req_contract_details(&mut self, contract: &ib_contract::Contract) -> AsyncResult<Vec<ib_contract::ContractDetails>> {
+        if !self.is_connected() {
+            return Err(Box::new(SocketError));
+        }
         let mut msg = Outgoing::ReqContractData.encode();
         msg.push_str(&8i32.encode());
         let id = self.get_next_req_id();
@@ -490,6 +565,9 @@ impl IBClient
     }
 
     pub async fn place_order(&mut self, order: &order::Order) -> AsyncResult<order::OrderTracker> {
+        if !self.is_connected() {
+            return Err(Box::new(SocketError));
+        }
         let mut msg = Outgoing::PlaceOrder.encode();
         let id = self.get_next_order_id();
         msg.push_str(&id.encode());
@@ -512,6 +590,9 @@ impl IBClient
 
     pub async fn req_market_data(&mut self, contract: &ib_contract::Contract, snapshot: bool, regulatory: bool, 
         additional_data: Option<Vec<GenericTickType>>) -> AsyncResult<ticker::Ticker> {
+        if !self.is_connected() {
+            return Err(Box::new(SocketError));
+        }
         let mut msg = Outgoing::ReqMktData.encode();
         msg.push_str("11\0"); //version
         let id = self.get_next_req_id();
@@ -554,6 +635,9 @@ impl IBClient
         where
         <Tz as TimeZone>::Offset: std::fmt::Display
         {
+        if !self.is_connected() {
+            return Err(Box::new(SocketError));
+        }
         let mut msg = Outgoing::ReqHistoricalData.encode();
         let id = self.get_next_req_id();
         msg.push_str(&id.encode());
@@ -565,7 +649,7 @@ impl IBClient
         msg.push_str(&what_to_show.encode());
         msg.push_str("1\00\0\0");
         let (resp_tx, resp_rx) = oneshot::channel();
-        self.req_tx.send(Request::ReqWithID{id, sender: resp_tx});
+        self.req_tx.send(Request::ReqWithID{id, sender: resp_tx})?;
         self.write_tx.send(msg).await?;
         match resp_rx.await {
             Ok(response) => 
@@ -580,6 +664,9 @@ impl IBClient
     }
 
     pub async fn req_adj_historical_data(&mut self, contract: &ib_contract::Contract, duration: HistoricalDataDuration, bar_period: HistoricalDataBarSize, use_rth: bool) -> AsyncResult<bars::BarSeries> {
+        if !self.is_connected() {
+            return Err(Box::new(SocketError));
+        }
         let mut msg = Outgoing::ReqHistoricalData.encode();
         let id = self.get_next_req_id();
         msg.push_str(&id.encode());
@@ -591,7 +678,7 @@ impl IBClient
         msg.push_str("ADJUSTED_LAST\0");
         msg.push_str("1\00\0\0");
         let (resp_tx, resp_rx) = oneshot::channel();
-        self.req_tx.send(Request::ReqWithID{id, sender: resp_tx});
+        self.req_tx.send(Request::ReqWithID{id, sender: resp_tx})?;
         self.write_tx.send(msg).await?;
         match resp_rx.await {
             Ok(response) => 
@@ -606,6 +693,9 @@ impl IBClient
     }
 
     pub async fn set_mkt_data_delayed(&mut self) -> AsyncResult<()> {
+        if !self.is_connected() {
+            return Err(Box::new(SocketError));
+        }
         let mut msg = Outgoing::ReqMarketDataType.encode();
         msg.push_str("1\0");
         msg.push_str(&MarketDataType::Delayed.encode());
@@ -615,6 +705,9 @@ impl IBClient
     }
 
     pub async fn set_mkt_data_real_time(&mut self) -> AsyncResult<()> {
+        if !self.is_connected() {
+            return Err(Box::new(SocketError));
+        }
         let mut msg = Outgoing::ReqMarketDataType.encode();
         msg.push_str("1\0");
         msg.push_str(&MarketDataType::RealTime.encode());
