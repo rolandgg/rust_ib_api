@@ -7,10 +7,10 @@ use chrono_tz::Tz;
 use chrono_tz::{UTC,US};
 #[derive(Debug,Clone)]
 pub struct ComboLeg {
-    pub con_id: i32,
-    pub ratio: i32,
-    pub action: ib_enums::ComboAction,
-    pub exchange: String,
+    pub con_id: Option<i32>,
+    pub ratio: Option<i32>,
+    pub action: Option<ib_enums::ComboAction>,
+    pub exchange: Option<String>,
     pub open_close: Option<ib_enums::OptionOpenClose>,
     pub shortsale_slot: Option<ib_enums::ShortSaleSlot>,
     pub designated_location: Option<String>,
@@ -20,15 +20,15 @@ pub struct ComboLeg {
 impl ComboLeg {
     pub fn new(con_id: i32, ratio: i32, action: ib_enums::ComboAction, exchange: &str) -> ComboLeg {
         ComboLeg{
-            con_id, ratio, action, exchange: exchange.to_string(), open_close: None, shortsale_slot: None, designated_location: None, exempt_code: None
+            con_id: Some(con_id), ratio: Some(ratio), action: Some(action), exchange: Some(exchange.to_string()), open_close: None, shortsale_slot: None, designated_location: None, exempt_code: None
         }
     }
 }
 #[derive(Default,Debug,Clone)]
 pub struct DeltaNeutralContract {
-    pub con_id: i32,
-    pub delta: Decimal,
-    pub price: Decimal,
+    pub con_id: Option<i32>,
+    pub delta: Option<Decimal>,
+    pub price: Option<Decimal>,
 }
 
 #[derive(Default,Debug,Clone)]

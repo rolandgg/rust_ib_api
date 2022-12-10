@@ -66,18 +66,21 @@ impl OrderTracker {
 
     pub fn status(&self) -> Option<String> {
         match &*self.order_status_rx.borrow() {
-            Some(stat) => Some(stat.status.clone()),
+            Some(stat) => stat.status.clone(),
             None => None
         }
     }
 
-    pub fn is_filled(&self) -> bool {
+    pub fn is_filled(&self) -> Option<bool> {
         if let Some(stat) = &*self.order_status_rx.borrow() {
-            if &stat.status == "Filled" {
-                return true;
-            } 
+            if let Some(st) = &stat.status{
+                if st == "Filled" {
+                return Some(true);
+                } 
+            }
+            else {return Some(false)};
         }
-        return false;
+        return None;
     }
 
     pub fn fill_time(&self) -> Option<String> {
@@ -86,14 +89,14 @@ impl OrderTracker {
 
     pub fn qty_filled(&self) -> Option<Decimal> {
         match &*self.order_status_rx.borrow() {
-            Some(stat) => Some(stat.filled.clone()),
+            Some(stat) => stat.filled.clone(),
             None => None
         }
     }
 
     pub fn avg_fill_price(&self) -> Option<Decimal> {
         match &*self.order_status_rx.borrow() {
-            Some(stat) => Some(stat.avg_fill_price.clone()),
+            Some(stat) => stat.avg_fill_price.clone(),
             None => None
         }
     }
@@ -101,7 +104,7 @@ impl OrderTracker {
     pub fn commissions_paid(&mut self) -> Option<Decimal> {
         self.update_com();
         if self.commission_reports.len() > 0 {
-            Some(self.commission_reports.iter().fold(Decimal::new(0, 2), |acc, x| acc + x.commission))
+            Some(self.commission_reports.iter().fold(Decimal::new(0, 2), |acc, x| acc + x.commission.unwrap_or(Decimal::new(0,2))))
         }
         else {
             None
@@ -124,13 +127,13 @@ pub struct Order {
 
     //order identification
     pub order_id: i32,
-    pub client_id: usize,
-    pub perm_id: i32,
+    pub client_id: Option<usize>,
+    pub perm_id: Option<i32>,
 
     //main order fields
-    pub action: Action,
-    pub total_qty: Decimal,
-    pub order_type: OrderType,
+    pub action: Option<Action>,
+    pub total_qty: Option<Decimal>,
+    pub order_type: Option<OrderType>,
     pub lmt_price: Option<Decimal>,
     pub aux_price: Option<Decimal>,
 
@@ -141,19 +144,19 @@ pub struct Order {
     pub oca_group: Option<String>,
     pub oca_type: Option<OCAType>,
     pub order_ref: Option<String>,
-    pub transmit: bool,
-    pub parent_id: usize,
-    pub block_order: bool,
-    pub sweep_to_fill: bool,
+    pub transmit: Option<bool>,
+    pub parent_id: Option<usize>,
+    pub block_order: Option<bool>,
+    pub sweep_to_fill: Option<bool>,
     pub display_size: Option<i32>,
     pub trigger_method: Option<TriggerMethod>,
-    pub outside_rth: bool,
-    pub hidden: bool,
+    pub outside_rth: Option<bool>,
+    pub hidden: Option<bool>,
     pub good_after_time: Option<String>,
     pub good_till_date: Option<String>,
-    pub override_percentage_constraints: bool,
+    pub override_percentage_constraints: Option<bool>,
     pub rule_80A: Option<Rule80A>,
-    pub all_or_none: bool,
+    pub all_or_none: Option<bool>,
     pub min_qty: Option<i32>,
     pub percent_offset: Option<f64>,
     pub trail_stop_price: Option<Decimal>,
@@ -170,14 +173,14 @@ pub struct Order {
     pub origin: Option<Origin>,
     pub short_sale_slot: Option<ShortSaleSlot>,
     pub designated_location: Option<String>,
-    pub exempt_code: i32,
+    pub exempt_code: Option<i32>,
 
     // SMART routing fields
-    pub discretionary_amt: f64,
-    pub e_trade_only: bool,
-    pub firm_quote_only: bool,
+    pub discretionary_amt: Option<f64>,
+    pub e_trade_only: Option<bool>,
+    pub firm_quote_only: Option<bool>,
     pub nbbo_price_cap: Option<Decimal>,
-    pub opt_out_smart_routing: bool,
+    pub opt_out_smart_routing: Option<bool>,
 
     // BOX exchange order fields
     pub auction_strategy: Option<AuctionStrategy>,
@@ -190,23 +193,23 @@ pub struct Order {
     pub stock_range_lower: Option<Decimal>,
     pub stock_range_upper: Option<Decimal>,
 
-    pub randomize_size: bool,
-    pub randomize_price: bool,
+    pub randomize_size: Option<bool>,
+    pub randomize_price: Option<bool>,
 
     // Volatility order fields
     pub volatility: Option<f64>,
     pub volatility_type: Option<VolatilityType>,
     pub delta_neutral_order_type: Option<OrderType>,
     pub delta_neutral_aux_price: Option<Decimal>,
-    pub delta_neutral_con_id: usize,
+    pub delta_neutral_con_id: Option<usize>,
     pub delta_neutral_settling_firm: Option<String>,
     pub delta_neutral_clearing_account: Option<String>,
     pub delta_neutral_clearing_intent: Option<String>,
     pub delta_neutral_open_close: Option<String>,
-    pub delta_neutral_short_sale: bool,
-    pub delta_neutral_short_sale_slot: bool,
+    pub delta_neutral_short_sale: Option<bool>,
+    pub delta_neutral_short_sale_slot: Option<bool>,
     pub delta_neutral_designated_location: Option<String>,
-    pub continuous_update: bool,
+    pub continuous_update: Option<bool>,
     pub reference_price_type: Option<ReferencePriceType>,
 
     // Combo order fields
@@ -220,10 +223,10 @@ pub struct Order {
     pub scale_price_adjust_value: Option<f64>,
     pub scale_price_adjust_interval: Option<i32>,
     pub scale_profit_offset: Option<f64>,
-    pub scale_auto_reset: bool,
+    pub scale_auto_reset: Option<bool>,
     pub scale_init_position: Option<i32>,
     pub scale_init_fill_qty: Option<i32>,
-    pub scale_random_percent: bool,
+    pub scale_random_percent: Option<bool>,
     pub scale_table: Option<String>,
 
     // Hedge order fields
@@ -243,11 +246,11 @@ pub struct Order {
     pub algo_id: Option<String>,
 
     // What-if
-    pub what_if: bool,
+    pub what_if: Option<bool>,
 
     // Not held
-    pub not_held: bool,
-    pub solicited: bool,
+    pub not_held: Option<bool>,
+    pub solicited: Option<bool>,
 
     // Models
     pub model_code: Option<String>,
@@ -259,22 +262,22 @@ pub struct Order {
 
     // VER PEG2BENCH fields
 
-    pub reference_contract_id: i32,
-    pub pegged_change_amount: f64,
-    pub is_pegged_change_amount_decrease: bool,
-    pub reference_change_amount: f64,
+    pub reference_contract_id: Option<i32>,
+    pub pegged_change_amount: Option<f64>,
+    pub is_pegged_change_amount_decrease: Option<bool>,
+    pub reference_change_amount: Option<f64>,
     pub reference_exchange_id: Option<String>,
     pub adjusted_order_type: Option<String>,
     pub trigger_price: Option<f64>,
     pub adjusted_stop_price: Option<f64>,
     pub adjusted_stop_limit_price: Option<f64>,
     pub adjusted_trailing_amount: Option<f64>,
-    pub adjustable_trailing_unit: i32,
+    pub adjustable_trailing_unit: Option<i32>,
     pub lmt_price_offset: Option<f64>,
 
-    pub conditions: Option<Vec<OrderConditionType>>,
-    pub conditions_cancel_order: bool,
-    pub conditions_ignore_rth: bool,
+    pub conditions: Option<Vec<Option<OrderConditionType>>>,
+    pub conditions_cancel_order: Option<bool>,
+    pub conditions_ignore_rth: Option<bool>,
 
     // ext operator
     pub ext_operator: Option<String>,
@@ -288,16 +291,16 @@ pub struct Order {
     pub mifid_2_execution_trader: Option<String>,
     pub mifid_2_execution_algo: Option<String>,
 
-    pub dont_use_auto_price_for_hedge: bool,
-    pub is_oms_container: bool,
-    pub discretionary_up_to_limit_price: bool,
+    pub dont_use_auto_price_for_hedge: Option<bool>,
+    pub is_oms_container: Option<bool>,
+    pub discretionary_up_to_limit_price: Option<bool>,
     pub auto_cancel_date: Option<String>,
     pub filled_quantity: Option<Decimal>,
     pub ref_futures_con_id: Option<usize>,
-    pub auto_cancel_parent: bool,
+    pub auto_cancel_parent: Option<bool>,
     pub shareholder: Option<String>,
-    pub imbalance_only: bool,
-    pub route_marketable_to_bbo: bool,
+    pub imbalance_only: Option<bool>,
+    pub route_marketable_to_bbo: Option<bool>,
     pub parent_perm_id: Option<usize>,
     pub use_price_mgmt_algo: Option<UsePriceMgmtAlgo>
 }
@@ -305,12 +308,12 @@ pub struct Order {
 impl Order {
     fn new() -> Self {
         Order {
-            transmit: true,
+            transmit: Some(true),
             open_close: Some(OrderOpenClose::Open),
             origin: Some(Origin::Customer),
-            exempt_code: -1,
-            e_trade_only: true,
-            firm_quote_only: true,
+            exempt_code: Some(-1),
+            e_trade_only: Some(true),
+            firm_quote_only: Some(true),
             auction_strategy: Some(AuctionStrategy::NoAuctionStrategy),
             ..Default::default()
         }
@@ -318,36 +321,36 @@ impl Order {
 
     pub fn market(contract: Contract, action: Action, qty: Decimal) -> Self {
         let mut order = Order::new();
-        order.action = action;
+        order.action = Some(action);
         order.contract = contract;
-        order.total_qty = qty;
+        order.total_qty = Some(qty);
         order
     }
 
     pub fn market_on_close(contract: Contract, action: Action, qty: Decimal) -> Self {
         let mut order = Order::new();
-        order.action = action;
+        order.action = Some(action);
         order.contract = contract;
-        order.total_qty = qty;
-        order.order_type = OrderType::MarketOnClose;
+        order.total_qty = Some(qty);
+        order.order_type = Some(OrderType::MarketOnClose);
         order
     }
 
     pub fn relative_market(contract: Contract, action: Action, qty: Decimal) -> Self {
         let mut order = Order::new();
-        order.action = action;
+        order.action = Some(action);
         order.contract = contract;
-        order.total_qty = qty;
-        order.order_type = OrderType::RelativeMarket;
+        order.total_qty = Some(qty);
+        order.order_type = Some(OrderType::RelativeMarket);
         order
     }
 
     pub fn limit(contract: Contract, action: Action, qty: Decimal, lmt: Decimal, tif: TimeInForce) -> Self {
         let mut order = Order::new();
-        order.action = action;
+        order.action = Some(action);
         order.contract = contract;
-        order.total_qty = qty;
-        order.order_type = OrderType::Limit;
+        order.total_qty = Some(qty);
+        order.order_type = Some(OrderType::Limit);
         order.lmt_price = Some(lmt);
         order.tif = Some(tif);
         order
@@ -515,7 +518,7 @@ impl Encodable for Order {
         code.push_str(&self.randomize_size.encode());
         code.push_str(&self.randomize_price.encode());
 
-        if self.order_type == OrderType::PeggedToBenchmark {
+        if self.order_type == Some(OrderType::PeggedToBenchmark) {
             code.push_str(&self.reference_contract_id.encode());
             code.push_str(&self.is_pegged_change_amount_decrease.encode());
             code.push_str(&self.pegged_change_amount.encode());
@@ -589,32 +592,32 @@ pub struct OrderState {
 #[derive(Default,Debug,Clone)]
 pub struct OrderStatus {
     pub order_id: i32,
-    pub status: String,
-    pub filled: Decimal,
-    pub remaining: Decimal,
-    pub avg_fill_price: Decimal,
-    pub perm_id: i32,
-    pub parent_id: usize,
-    pub last_fill_price: Decimal,
-    pub client_id:  usize,
+    pub status: Option<String>,
+    pub filled: Option<Decimal>,
+    pub remaining: Option<Decimal>,
+    pub avg_fill_price: Option<Decimal>,
+    pub perm_id: Option<i32>,
+    pub parent_id: Option<usize>,
+    pub last_fill_price: Option<Decimal>,
+    pub client_id:  Option<usize>,
     pub why_held: Option<String>
 }
 #[derive(Debug,Clone)]
 pub struct Execution {
-    pub exec_id: String,
-    pub time: String,
-    pub acct_number: String,
-    pub exchange: String,
-    pub side: Side,
-    pub shares: Decimal,
-    pub price: Decimal,
-    pub perm_id: i32,
-    pub client_id: usize,
+    pub exec_id: Option<String>,
+    pub time: Option<String>,
+    pub acct_number: Option<String>,
+    pub exchange: Option<String>,
+    pub side: Option<Side>,
+    pub shares: Option<Decimal>,
+    pub price: Option<Decimal>,
+    pub perm_id: Option<i32>,
+    pub client_id: Option<usize>,
     pub order_id: i32,
     pub contract: Contract,
-    pub liquidation: i32,
-    pub cum_qty: Decimal,
-    pub avg_price: Decimal,
+    pub liquidation: Option<i32>,
+    pub cum_qty: Option<Decimal>,
+    pub avg_price: Option<Decimal>,
     pub order_ref: Option<String>,
     pub ev_rule: Option<String>,
     pub ev_multiplier: Option<Decimal>,
@@ -623,9 +626,9 @@ pub struct Execution {
 }
 #[derive(Default,Debug,Clone)]
 pub struct CommissionReport {
-    pub exec_id: String,
-    pub commission: Decimal,
-    pub currency: String,
+    pub exec_id: Option<String>,
+    pub commission: Option<Decimal>,
+    pub currency: Option<String>,
     pub realized_pnl: Option<Decimal>,
     pub yield_amount: Option<Decimal>,
     pub yield_redemption_date: Option<i32>

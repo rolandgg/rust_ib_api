@@ -43,64 +43,68 @@ pub enum IBFrame {
     Execution(order::Execution),
     CommissionReport(order::CommissionReport),
     OrderStatus(order::OrderStatus),
-    PriceTick{id: i32, kind: TickType, price: f64, size: Option<i32>, attributes: EnumSet<TickAttribute>},
+    PriceTick{id: i32, kind: TickType, price: f64, size: Option<i32>, attributes: Option<EnumSet<TickAttribute>>},
     SizeTick{id: i32, kind: TickType, size: i32},
     StringTick{id: i32, kind: TickType, val: Option<String>},
     GenericTick{id: i32, kind: TickType, val: f64},
     Bars{id: i32, data: bars::BarSeries},
-    Error{id: i32, code: i32, msg: String},
+    Error{id: Option<i32>, code: Option<i32>, msg: Option<String>},
     NotImplemented
 }
 
 impl IBFrame {
-    pub fn parse (msg: &[u8]) -> Self {
+    pub fn parse (msg: &[u8]) -> Option<Self> {
         let utf8msg = String::from_utf8_lossy(msg);
         let mut it = utf8msg.split("\0");
-        let msg_type: Incoming = it.next().unwrap().parse().expect("Could not parse message type.");
+        let msg_type: Incoming = it.next()?.parse().ok()?;
         match msg_type {
             Incoming::AcctValue => {
                 it.next(); //skip version
-                match it.next().unwrap() {
-                    "AccountCode" => IBFrame::AccountCode(decode(&mut it)),
-                    "AccountType" => IBFrame::AccountType(decode(&mut it)),
-                    "CashBalance" => IBFrame::CashBalance(decode(&mut it)),
-                    "EquityWithLoanValue" => IBFrame::EquityWithLoanValue(decode(&mut it)),
-                    "ExcessLiquidity" => IBFrame::ExcessLiquidity(decode(&mut it)),
-                    "NetLiquidation" => IBFrame::NetLiquidation(decode(&mut it)),
-                    "RealizedPnL" => IBFrame::RealizedPnL(decode(&mut it)),
-                    "UnrealizedPnL" => IBFrame::UnrealizedPnL(decode(&mut it)),
-                    "TotalCashBalance" => IBFrame::TotalCashBalance(decode(&mut it)),
-                    &_ => IBFrame::NotImplemented
+                match it.next() {
+                    Some(val) => Some(match val {
+                        "AccountCode" => IBFrame::AccountCode(decode(&mut it)),
+                        "AccountType" => IBFrame::AccountType(decode(&mut it)),
+                        "CashBalance" => IBFrame::CashBalance(decode(&mut it)),
+                        "EquityWithLoanValue" => IBFrame::EquityWithLoanValue(decode(&mut it)),
+                        "ExcessLiquidity" => IBFrame::ExcessLiquidity(decode(&mut it)),
+                        "NetLiquidation" => IBFrame::NetLiquidation(decode(&mut it)),
+                        "RealizedPnL" => IBFrame::RealizedPnL(decode(&mut it)),
+                        "UnrealizedPnL" => IBFrame::UnrealizedPnL(decode(&mut it)),
+                        "TotalCashBalance" => IBFrame::TotalCashBalance(decode(&mut it)),
+                        &_ => IBFrame::NotImplemented}),
+                    None => None
                 }
             },
             Incoming::AcctDownloadEnd => {
                 it.next(); //skip version
-                IBFrame::AccountUpdateEnd(decode(&mut it))
+                Some(IBFrame::AccountUpdateEnd(decode(&mut it)))
             },
             Incoming::AcctUpdateTime => {
                 it.next(); //skip version
-                IBFrame::AccountUpdateTime(decode(&mut it))
+                Some(IBFrame::AccountUpdateTime(decode(&mut it)))
             },
             Incoming::PortfolioValue => {
-                let version: i32 = decode(&mut it).unwrap();
-                let con_id: i32 = decode(&mut it).unwrap();
+                let version: Option<i32> = decode(&mut it);
+                let con_id = decode(&mut it);
                 let mut contract = ib_contract::Contract::default();
-                contract.con_id = Some(con_id);
+                contract.con_id = con_id;
                 contract.symbol = decode(&mut it);
                 contract.sec_type = decode(&mut it);
                 contract.last_trade_date_or_contract_month = decode(&mut it);
                 contract.strike = decode(&mut it);
                 contract.right = decode(&mut it);
-                if version >= 7 {
-                    contract.multiplier = decode(&mut it);
-                    contract.primary_exchange = decode(&mut it);
-                }
-                contract.currency = decode(&mut it);
-                contract.local_symbol = decode(&mut it);
-                if version >= 8 {
-                    contract.trading_class = decode(&mut it);
-                }
-                IBFrame::PortfolioValue(Position {
+                if let Some(v) = version {
+                    if v >= 7 {
+                        contract.multiplier = decode(&mut it);
+                        contract.primary_exchange = decode(&mut it);
+                    }
+                    contract.currency = decode(&mut it);
+                    contract.local_symbol = decode(&mut it);
+                    if v >= 8 {
+                        contract.trading_class = decode(&mut it);
+                    }
+                }  
+                Some(IBFrame::PortfolioValue(Position {
                     contract,
                     position: decode(&mut it),
                     market_price: decode(&mut it),
@@ -108,84 +112,91 @@ impl IBFrame {
                     average_cost: decode(&mut it),
                     unrealized_pnl: decode(&mut it),
                     realized_pnl: decode(&mut it)
-                })
-
+                }))
             },
             Incoming::CurrentTime => {
                 it.next(); //skip version
-                let unix_time: i64 = decode(&mut it).unwrap();
-                IBFrame::CurrentTime(NaiveDateTime::from_timestamp(unix_time, 0))
+                let unix_time= decode(&mut it);
+                if let Some(t) = unix_time {
+                    Some(IBFrame::CurrentTime(NaiveDateTime::from_timestamp(t, 0)))
+                }
+                else {None}
             },
             Incoming::ContractData => {
                 it.next(); //skip version
-                let req_id = decode(&mut it).unwrap();
-                let mut contract = ib_contract::Contract {
-                    symbol : decode(&mut it),
-                    sec_type: decode(&mut it),
-                    last_trade_date_or_contract_month: decode(&mut it),
-                    strike: decode(&mut it),
-                    right: decode(&mut it),
-                    exchange: decode(&mut it),
-                    currency: decode(&mut it),
-                    local_symbol: decode(&mut it),
-                    ..Default::default()
-                };
-                let mut details = ib_contract::ContractDetails {
-                    market_name: decode(&mut it),
-                    ..Default::default()
-                };
-                contract.trading_class = decode(&mut it);
-                contract.con_id = decode(&mut it);
-                details.min_tick = decode(&mut it);
-                details.md_size_multiplier = decode(&mut it);
-                contract.multiplier = decode(&mut it);
-                details.order_types = decode(&mut it);
-                details.valid_exchanges = decode(&mut it);
-                details.price_magnifier = decode(&mut it);
-                details.under_con_id = decode(&mut it);
-                details.long_name = decode(&mut it);
-                contract.primary_exchange = decode(&mut it);
-                details.contract_month = decode(&mut it);
-                details.industry = decode(&mut it);
-                details.category = decode(&mut it);
-                details.subcategory = decode(&mut it);
-                details.timezone_id = decode(&mut it);
-                details.trading_hours = decode(&mut it);
-                details.liquid_hours = decode(&mut it);
-                details.ev_rule = decode(&mut it);
-                details.ev_multiplier = decode(&mut it);
-                let sec_id_list_count: Option<usize> = decode(&mut it);
-                details.sec_id_list = match sec_id_list_count {
-                    Some(count) => {
-                        let mut sec_ids: Vec<(String,String)> = Vec::with_capacity(count);
-                        for i in 0..count {
-                            sec_ids.push((decode(&mut it).unwrap(), decode(&mut it).unwrap()));
-                        }
-                        Some(sec_ids)
-                    },
-                    None => None
-                };
-                details.agg_group = decode(&mut it);
-                details.under_symbol = decode(&mut it);
-                details.under_sec_type = decode(&mut it);
-                details.market_rule_ids = decode(&mut it);
-                details.real_expiration_date = decode(&mut it);
-                details.contract = Some(contract);
-                IBFrame::ContractDetails{
-                    req_id,
-                    contract_details: details
+                match decode(&mut it) {
+                    None => None,
+                    Some(id) => {
+                        let req_id = id;
+                        let mut contract = ib_contract::Contract {
+                            symbol : decode(&mut it),
+                            sec_type: decode(&mut it),
+                            last_trade_date_or_contract_month: decode(&mut it),
+                            strike: decode(&mut it),
+                            right: decode(&mut it),
+                            exchange: decode(&mut it),
+                            currency: decode(&mut it),
+                            local_symbol: decode(&mut it),
+                            ..Default::default()
+                        };
+                        let mut details = ib_contract::ContractDetails {
+                            market_name: decode(&mut it),
+                            ..Default::default()
+                        };
+                        contract.trading_class = decode(&mut it);
+                        contract.con_id = decode(&mut it);
+                        details.min_tick = decode(&mut it);
+                        details.md_size_multiplier = decode(&mut it);
+                        contract.multiplier = decode(&mut it);
+                        details.order_types = decode(&mut it);
+                        details.valid_exchanges = decode(&mut it);
+                        details.price_magnifier = decode(&mut it);
+                        details.under_con_id = decode(&mut it);
+                        details.long_name = decode(&mut it);
+                        contract.primary_exchange = decode(&mut it);
+                        details.contract_month = decode(&mut it);
+                        details.industry = decode(&mut it);
+                        details.category = decode(&mut it);
+                        details.subcategory = decode(&mut it);
+                        details.timezone_id = decode(&mut it);
+                        details.trading_hours = decode(&mut it);
+                        details.liquid_hours = decode(&mut it);
+                        details.ev_rule = decode(&mut it);
+                        details.ev_multiplier = decode(&mut it);
+                        let sec_id_list_count: Option<usize> = decode(&mut it);
+                        details.sec_id_list = match sec_id_list_count {
+                            Some(count) => {
+                                let mut sec_ids: Vec<(String,String)> = Vec::with_capacity(count);
+                                for i in 0..count {
+                                    sec_ids.push((decode(&mut it).unwrap_or(String::from("")), decode(&mut it).unwrap_or(String::from(""))));
+                                }
+                                Some(sec_ids)
+                            },
+                            None => None
+                        };
+                        details.agg_group = decode(&mut it);
+                        details.under_symbol = decode(&mut it);
+                        details.under_sec_type = decode(&mut it);
+                        details.market_rule_ids = decode(&mut it);
+                        details.real_expiration_date = decode(&mut it);
+                        details.contract = Some(contract);
+                        Some(IBFrame::ContractDetails{
+                            req_id,
+                            contract_details: details
+                        })
+                    }
                 }
-            }
+            },
             Incoming::ContractDataEnd => {
                 it.next(); //skip version
-                IBFrame::ContractDetailsEnd(decode(&mut it).unwrap())
-            }
+                Some(IBFrame::ContractDetailsEnd(decode(&mut it)?))
+            },
             Incoming::NextValidId => {
                 it.next(); //skip version
-                IBFrame::OrderID(decode(&mut it).unwrap())
-            }
+                Some(IBFrame::OrderID(decode(&mut it)?))
+            },
             Incoming::OpenOrder => {
-                let order_id: i32 = decode(&mut it).unwrap();
+                let order_id: i32 = decode(&mut it)?;
                 //decode contract
                 let contract = ib_contract::Contract {
                     con_id: decode(&mut it),
@@ -204,9 +215,9 @@ impl IBFrame {
                 let mut order = order::Order {
                     contract,
                     order_id,
-                    action: decode(&mut it).unwrap(),
-                    total_qty: decode(&mut it).unwrap(),
-                    order_type: decode(&mut it).unwrap(),
+                    action: decode(&mut it),
+                    total_qty: decode(&mut it),
+                    order_type: decode(&mut it),
                     lmt_price: decode(&mut it),
                     aux_price: decode(&mut it),
                     tif: decode(&mut it),
@@ -215,11 +226,11 @@ impl IBFrame {
                     open_close:  decode(&mut it),
                     origin: decode(&mut it),
                     order_ref: decode(&mut it),
-                    client_id: decode(&mut it).unwrap(),
-                    perm_id: decode(&mut it).unwrap(),
-                    outside_rth: decode(&mut it).unwrap(),
-                    hidden: decode(&mut it).unwrap(),
-                    discretionary_amt: decode(&mut it).unwrap(),
+                    client_id: decode(&mut it),
+                    perm_id: decode(&mut it),
+                    outside_rth: decode(&mut it),
+                    hidden: decode(&mut it),
+                    discretionary_amt: decode(&mut it),
                     good_after_time: decode(&mut it),
                     fa_group: {it.next(); decode(&mut it)},
                     fa_method: decode(&mut it),
@@ -232,7 +243,7 @@ impl IBFrame {
                     settling_firm: decode(&mut it),
                     short_sale_slot: decode(&mut it),
                     designated_location: decode(&mut it),
-                    exempt_code: decode(&mut it).unwrap(),
+                    exempt_code: decode(&mut it),
                     auction_strategy: decode(&mut it),
                     starting_price: decode(&mut it),
                     stock_ref_price: decode(&mut it),
@@ -240,15 +251,15 @@ impl IBFrame {
                     stock_range_lower: decode(&mut it),
                     stock_range_upper: decode(&mut it),
                     display_size: decode(&mut it),
-                    block_order: decode(&mut it).unwrap(),
-                    sweep_to_fill: decode(&mut it).unwrap(),
-                    all_or_none: decode(&mut it).unwrap(),
+                    block_order: decode(&mut it),
+                    sweep_to_fill: decode(&mut it),
+                    all_or_none: decode(&mut it),
                     min_qty: decode(&mut it),
                     oca_type: decode(&mut it),
-                    e_trade_only: decode(&mut it).unwrap(),
-                    firm_quote_only: decode(&mut it).unwrap(),
+                    e_trade_only: decode(&mut it),
+                    firm_quote_only: decode(&mut it),
                     nbbo_price_cap: decode(&mut it),
-                    parent_id: decode(&mut it).unwrap(),
+                    parent_id: decode(&mut it),
                     trigger_method: decode(&mut it),
                     volatility: decode(&mut it),
                     volatility_type: decode(&mut it),
@@ -257,16 +268,16 @@ impl IBFrame {
                     ..Default::default()
                 };
                 if order.delta_neutral_order_type.is_some() {
-                    order.delta_neutral_con_id = decode(&mut it).unwrap();
+                    order.delta_neutral_con_id = decode(&mut it);
                     order.delta_neutral_settling_firm = decode(&mut it);
                     order.delta_neutral_clearing_account = decode(&mut it);
                     order.delta_neutral_clearing_intent = decode(&mut it);
                     order.delta_neutral_open_close = decode(&mut it);
-                    order.delta_neutral_short_sale = decode(&mut it).unwrap();
-                    order.delta_neutral_short_sale_slot = decode(&mut it).unwrap();
+                    order.delta_neutral_short_sale = decode(&mut it);
+                    order.delta_neutral_short_sale_slot = decode(&mut it);
                     order.delta_neutral_designated_location = decode(&mut it);
                 }
-                order.continuous_update = decode(&mut it).unwrap();
+                order.continuous_update = decode(&mut it);
                 order.reference_price_type = decode(&mut it);
                 order.trail_stop_price = decode(&mut it);
                 order.trailing_percent = decode(&mut it);
@@ -278,10 +289,10 @@ impl IBFrame {
                     let mut legs = Vec::with_capacity(n);
                     for i in 0..n {
                         legs.push(ib_contract::ComboLeg {
-                            con_id: decode(&mut it).unwrap(),
-                            ratio: decode(&mut it).unwrap(),
-                            action: decode(&mut it).unwrap(),
-                            exchange: decode(&mut it).unwrap(),
+                            con_id: decode(&mut it),
+                            ratio: decode(&mut it),
+                            action: decode(&mut it),
+                            exchange: decode(&mut it),
                             open_close: decode(&mut it),
                             shortsale_slot: decode(&mut it),
                             designated_location: decode(&mut it),
@@ -302,7 +313,7 @@ impl IBFrame {
                 if let Some(n) = smart_combo_routing_params_count {
                     let mut combo_params: Vec<(String,String)> = Vec::with_capacity(n);
                     for i in 0..n {
-                        combo_params.push((decode(&mut it).unwrap(), decode(&mut it).unwrap()));
+                        combo_params.push((decode(&mut it).unwrap_or(String::from("")), decode(&mut it).unwrap_or(String::from(""))));
                     }
                 }
                 order.scale_init_level_size = decode(&mut it);
@@ -313,10 +324,10 @@ impl IBFrame {
                         order.scale_price_adjust_value = decode(&mut it);
                         order.scale_price_adjust_interval = decode(&mut it);
                         order.scale_profit_offset = decode(&mut it);
-                        order.scale_auto_reset = decode(&mut it).unwrap();
+                        order.scale_auto_reset = decode(&mut it);
                         order.scale_init_position = decode(&mut it);
                         order.scale_init_fill_qty = decode(&mut it);
-                        order.scale_random_percent = decode(&mut it).unwrap();
+                        order.scale_random_percent = decode(&mut it);
                     }
                 }
                 order.hedge_type = decode(&mut it);
@@ -325,17 +336,17 @@ impl IBFrame {
                         order.hedge_param = decode(&mut it);
                     }
                 }
-                order.opt_out_smart_routing = decode(&mut it).unwrap();
+                order.opt_out_smart_routing = decode(&mut it);
                 order.clearing_account = decode(&mut it);
                 order.clearing_intent = decode(&mut it);
-                order.not_held = decode(&mut it).unwrap();
+                order.not_held = decode(&mut it);
                 let has_delta_neutral_contract: Option<bool> = decode(&mut it);
                 if let Some(has_dnc) = has_delta_neutral_contract {
                     if has_dnc {
                         order.contract.delta_neutral_contract = Some(ib_contract::DeltaNeutralContract{
-                            con_id: decode(&mut it).unwrap(),
-                            delta: decode(&mut it).unwrap(),
-                            price: decode(&mut it).unwrap()
+                            con_id: decode(&mut it),
+                            delta: decode(&mut it),
+                            price: decode(&mut it)
                         });
                     }
                 }
@@ -345,13 +356,13 @@ impl IBFrame {
                     if let Some(n) = params_count {
                         let mut params: Vec<(String,String)> = Vec::with_capacity(n);
                         for i in 0..n {
-                            params.push((decode(&mut it).unwrap(),decode(&mut it).unwrap()));
+                            params.push((decode(&mut it).unwrap_or(String::from("")),decode(&mut it).unwrap_or(String::from(""))));
                         }
                         order.algo_params = Some(params);
                     }
                 }
-                order.solicited = decode(&mut it).unwrap();
-                order.what_if = decode(&mut it).unwrap();
+                order.solicited = decode(&mut it);
+                order.what_if = decode(&mut it);
                 let order_state = order::OrderState{
                     status: decode(&mut it),
                     init_margin_before: decode(&mut it),
@@ -370,13 +381,13 @@ impl IBFrame {
                     warning_text: decode(&mut it),
                     ..Default::default()
                 };
-                order.randomize_size = decode(&mut it).unwrap();
-                order.randomize_price = decode(&mut it).unwrap();
-                if order.order_type == OrderType::PeggedToBenchmark {
-                    order.reference_contract_id = decode(&mut it).unwrap();
-                    order.is_pegged_change_amount_decrease = decode(&mut it).unwrap();
-                    order.pegged_change_amount = decode(&mut it).unwrap();
-                    order.reference_change_amount = decode(&mut it).unwrap();
+                order.randomize_size = decode(&mut it);
+                order.randomize_price = decode(&mut it);
+                if order.order_type == Some(OrderType::PeggedToBenchmark) {
+                    order.reference_contract_id = decode(&mut it);
+                    order.is_pegged_change_amount_decrease = decode(&mut it);
+                    order.pegged_change_amount = decode(&mut it);
+                    order.reference_change_amount = decode(&mut it);
                     order.reference_exchange_id = decode(&mut it);
                 }
                 let conditions_count: Option<usize> = decode(&mut it);
@@ -385,11 +396,11 @@ impl IBFrame {
                     if n > 0 {
                         let mut conditions = Vec::with_capacity(n);
                         for i in 0..n {
-                            conditions.push(decode(&mut it).unwrap());
+                            conditions.push(decode(&mut it));
                         }
                         order.conditions = Some(conditions);
-                        order.conditions_ignore_rth = decode(&mut it).unwrap();
-                        order.conditions_cancel_order = decode(&mut it).unwrap();
+                        order.conditions_ignore_rth = decode(&mut it);
+                        order.conditions_cancel_order = decode(&mut it);
                     }  
                 }
                 order.adjusted_order_type = decode(&mut it);
@@ -399,7 +410,7 @@ impl IBFrame {
                 order.adjusted_stop_price = decode(&mut it);
                 order.adjusted_stop_limit_price = decode(&mut it);
                 order.adjusted_trailing_amount = decode(&mut it);
-                order.adjustable_trailing_unit = decode(&mut it).unwrap();
+                order.adjustable_trailing_unit = decode(&mut it);
                 let name: Option<String> = decode(&mut it);
                 let val: Option<String> = decode(&mut it);
                 let display_name: Option<String> = decode(&mut it);
@@ -409,30 +420,30 @@ impl IBFrame {
                     })
                 }
                 order.cash_qty = decode(&mut it);
-                order.dont_use_auto_price_for_hedge = decode(&mut it).unwrap();
-                order.is_oms_container = decode(&mut it).unwrap();
-                order.discretionary_up_to_limit_price = decode(&mut it).unwrap();
+                order.dont_use_auto_price_for_hedge = decode(&mut it);
+                order.is_oms_container = decode(&mut it);
+                order.discretionary_up_to_limit_price = decode(&mut it);
                 order.use_price_mgmt_algo = decode(&mut it);                
-                IBFrame::OpenOrder{
+                Some(IBFrame::OpenOrder{
                     order, order_state
-                }
+                })
             },
             Incoming::CommissionReport => {
                 it.next(); //skip version
-                IBFrame::CommissionReport(
+                Some(IBFrame::CommissionReport(
                     order::CommissionReport {
-                        exec_id: decode(&mut it).unwrap(),
-                        commission: decode(&mut it).unwrap(),
-                        currency: decode(&mut it).unwrap(),
+                        exec_id: decode(&mut it),
+                        commission: decode(&mut it),
+                        currency: decode(&mut it),
                         realized_pnl: decode(&mut it),
                         yield_amount: decode(&mut it),
                         yield_redemption_date: decode(&mut it)
                     }
-                )
+                ))
             },
             Incoming::ExecutionData => {
                 it.next(); //skip version
-                let order_id: i32 = decode(&mut it).unwrap();
+                let order_id: i32 = decode(&mut it)?;
                 let contract = ib_contract::Contract {
                     con_id: decode(&mut it),
                     symbol : decode(&mut it),
@@ -447,119 +458,127 @@ impl IBFrame {
                     trading_class: decode(&mut it),
                     ..Default::default()
                 };
-                IBFrame::Execution(order::Execution {
+                Some(IBFrame::Execution(order::Execution {
                     order_id,
                     contract,
-                    exec_id: decode(&mut it).unwrap(),
-                    time: decode(&mut it).unwrap(),
-                    acct_number: decode(&mut it).unwrap(),
-                    exchange: decode(&mut it).unwrap(),
-                    side: decode(&mut it).unwrap(),
-                    shares: decode(&mut it).unwrap(),
-                    price: decode(&mut it).unwrap(),
-                    perm_id: decode(&mut it).unwrap(),
-                    client_id: decode(&mut it).unwrap(),
-                    liquidation: decode(&mut it).unwrap(),
-                    cum_qty: decode(&mut it).unwrap(),
-                    avg_price: decode(&mut it).unwrap(),
+                    exec_id: decode(&mut it),
+                    time: decode(&mut it),
+                    acct_number: decode(&mut it),
+                    exchange: decode(&mut it),
+                    side: decode(&mut it),
+                    shares: decode(&mut it),
+                    price: decode(&mut it),
+                    perm_id: decode(&mut it),
+                    client_id: decode(&mut it),
+                    liquidation: decode(&mut it),
+                    cum_qty: decode(&mut it),
+                    avg_price: decode(&mut it),
                     order_ref: decode(&mut it),
                     ev_rule: decode(&mut it),
                     ev_multiplier: decode(&mut it),
                     model_code: decode(&mut it),
                     last_liquidity: decode(&mut it)
-                })
+                }))
             },
             Incoming::OrderStatus => {
-                IBFrame::OrderStatus(order::OrderStatus {
-                    order_id: decode(&mut it).unwrap(),
-                    status: decode(&mut it).unwrap(),
-                    filled: decode(&mut it).unwrap(),
-                    remaining: decode(&mut it).unwrap(),
-                    avg_fill_price: decode(&mut it).unwrap(),
-                    perm_id: decode(&mut it).unwrap(),
-                    parent_id: decode(&mut it).unwrap(),
-                    last_fill_price: decode(&mut it).unwrap(),
-                    client_id: decode(&mut it).unwrap(),
+                Some(IBFrame::OrderStatus(order::OrderStatus {
+                    order_id: decode(&mut it)?,
+                    status: decode(&mut it),
+                    filled: decode(&mut it),
+                    remaining: decode(&mut it),
+                    avg_fill_price: decode(&mut it),
+                    perm_id: decode(&mut it),
+                    parent_id: decode(&mut it),
+                    last_fill_price: decode(&mut it),
+                    client_id: decode(&mut it),
                     why_held: decode(&mut it)
-                })
+                }))
             },
             Incoming::TickPrice => {
                 it.next(); //skip version
-                let id = decode(&mut it).unwrap();
-                let kind = decode(&mut it).unwrap();
-                let price = decode(&mut it).unwrap();
+                let id = decode(&mut it)?;
+                let kind = decode(&mut it)?;
+                let price = decode(&mut it)?;
         
                 let size = decode(&mut it);
-                let mask: u32 = decode(&mut it).unwrap();
-                let bits = BitSlice::<Lsb0, _>::from_element(&mask);
-                let mut attributes = EnumSet::new();
-                if bits[0] == true {attributes.insert(TickAttribute::CanAutoExecute);}
-                if bits[1] == true {attributes.insert(TickAttribute::PastLimit);}
-                if bits[2] == true {attributes.insert(TickAttribute::PreOpen);}
-                IBFrame::PriceTick {
+                let mask: Option<u32> = decode(&mut it);
+                let attributes = match mask {
+                    Some(m) => {
+                        let bits = BitSlice::<Lsb0, _>::from_element(&m);
+                        let mut attributes = EnumSet::new();
+                        if bits[0] == true {attributes.insert(TickAttribute::CanAutoExecute);}
+                        if bits[1] == true {attributes.insert(TickAttribute::PastLimit);}
+                        if bits[2] == true {attributes.insert(TickAttribute::PreOpen);}
+                        Some(attributes)
+                    }
+                    None => None
+                };
+                
+                Some(IBFrame::PriceTick {
                     id,
                     kind,
                     price,
                     size,
                     attributes
-                }
+                })
             }
             Incoming::TickSize => {
                 it.next(); //skip version
-                IBFrame::SizeTick {
-                    id: decode(&mut it).unwrap(),
-                    kind: decode(&mut it).unwrap(),
-                    size: decode(&mut it).unwrap(),
-                }
+                Some(IBFrame::SizeTick {
+                    id: decode(&mut it)?,
+                    kind: decode(&mut it)?,
+                    size: decode(&mut it)?,
+                })
             },
             Incoming::TickString => {
                 it.next(); //skip version
-                IBFrame::StringTick {
-                    id: decode(&mut it).unwrap(),
-                    kind: decode(&mut it).unwrap(),
+                Some(IBFrame::StringTick {
+                    id: decode(&mut it)?,
+                    kind: decode(&mut it)?,
                     val: decode(&mut it)
-                }
+                })
             },
             Incoming::TickGeneric => {
                 it.next(); //skip version
-                IBFrame::GenericTick {
-                    id: decode(&mut it).unwrap(),
-                    kind: decode(&mut it).unwrap(),
-                    val: decode(&mut it).unwrap()
-                }
+                Some(IBFrame::GenericTick {
+                    id: decode(&mut it)?,
+                    kind: decode(&mut it)?,
+                    val: decode(&mut it)?
+                })
             },
             Incoming::HistoricalData => {
-                let id = decode(&mut it).unwrap();
-                let start_dt: String = decode(&mut it).unwrap();
-                let end_dt: String = decode(&mut it).unwrap();
-                let n_bars = decode(&mut it).unwrap();
-                let data = if n_bars > 0 {
-                    let mut bar_data = Vec::with_capacity(n_bars);
-                    for i in 0..n_bars {
-                        bar_data.push(bars::Bar {
-                            t_stamp: decode(&mut it).unwrap(),
-                            open: decode(&mut it).unwrap(),
-                            high: decode(&mut it).unwrap(),
-                            low: decode(&mut it).unwrap(),
-                            close: decode(&mut it).unwrap(),
-                            volume: decode(&mut it).unwrap(),
-                            wap: decode(&mut it).unwrap(),
-                            count: decode(&mut it).unwrap()
-                        });
-                    }
-                    Some(bar_data)
+                let id = decode(&mut it)?;
+                let start_dt = decode(&mut it);
+                let end_dt = decode(&mut it);
+                let n_bars = decode(&mut it);
+                let data = if let Some(nb) = n_bars {
+                    if nb > 0 {
+                        let mut bar_data = Vec::with_capacity(nb);
+                        for i in 0..nb {
+                            bar_data.push(bars::Bar {
+                                t_stamp: decode(&mut it),
+                                open: decode(&mut it),
+                                high: decode(&mut it),
+                                low: decode(&mut it),
+                                close: decode(&mut it),
+                                volume: decode(&mut it),
+                                wap: decode(&mut it),
+                                count: decode(&mut it)
+                            });
+                        }
+                        Some(bar_data)} else {None}
                 } else {None};
-                IBFrame::Bars{id, data: bars::BarSeries{start_dt, end_dt, n_bars, data}}
+                Some(IBFrame::Bars{id, data: bars::BarSeries{start_dt, end_dt, n_bars, data}})
             }
             Incoming::ErrMsg => {
                 it.next(); //skip version
-                IBFrame::Error {
-                    id: decode(&mut it).unwrap(),
-                    code: decode(&mut it).unwrap(),
-                    msg: decode(&mut it).unwrap()
-                }
+                Some(IBFrame::Error {
+                    id: decode(&mut it),
+                    code: decode(&mut it),
+                    msg: decode(&mut it)
+                })
             }
-            _ => IBFrame::NotImplemented
+            _ => Some(IBFrame::NotImplemented)
         }
         
     }

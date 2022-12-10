@@ -66,15 +66,18 @@ pub mod ib_message {
     T: std::str::FromStr + Sized + Decodable,
     <T as std::str::FromStr>::Err: std::fmt::Debug,
     {
-        let str_val = stream.next().unwrap();
-        //println!("{}", str_val);
-        match str_val {
-            "" | "1.7976931348623157E308" => return None,
-            _ => match T::decode_str(str_val) {
-                Ok(val) => return Some(val),
-                Err(_) => panic!{"{} could not be decoded", str_val}
-            }
+        match stream.next(){
+            Some(str_val) => match str_val {
+                "" | "1.7976931348623157E308" => None,
+                _ => match T::decode_str(str_val) {
+                    Ok(val) => Some(val),
+                    Err(_) => None
+                }
+            },
+            None => None
         }
+        //println!("{}", str_val);
+        
     }
 
     pub trait Encodable 
