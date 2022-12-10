@@ -64,7 +64,7 @@ For more usage examples, see the integration tests.
 
 The client is currently refactored to avoid crashes. The `IBClient::connect` function will return an error if the initial connection is unsuccessful. After that, socket disconnects will be communicated from the reader/writer task to the client object and these tasks will then shut down. Any further request to the client will return an error. The client is not designed for reconnection. To establish a new connection, build a new client object. All detached tasks will be canceled when the client is deallocated. Errors on decoding messages from the server will be converted to Option:None for now, the client keeps running. A logger task is still to be added, as well as the communication of actual API-Errors send from the server.
 
-#Limitations/Disclaimer
+# Limitations/Disclaimer
 
 The code is largely ported from the official API projects, the message parsing should therefore be complete. This does not mean, however, that all potential functionality of the API has been tested. Managed accounts, trading Bonds/Warrants etc. have not and will not be tested by me, since I lack the corresponding trading permissions.
 
