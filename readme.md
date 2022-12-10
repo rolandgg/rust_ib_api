@@ -4,7 +4,7 @@ This is a native Rust client for the Interactive Brokers TWS API (currently IB G
 
 The client is multithreaded and uses the tokio runtime. Requests are either blocking (REST like) or streaming, depending on what makes more sense. Upon connection, the client will automatically subscribe to account updates.
 
-#Usage
+# Usage
 
 Here is how you would request contract details for a specific contract:
 
@@ -60,7 +60,7 @@ The client internally launches three tasks, one to manage the read half of the s
 
 For more usage examples, see the integration tests.
 
-#Error handling
+# Error handling
 
 The client is currently refactored to avoid crashes. The `IBClient::connect` function will return an error if the initial connection is unsuccessful. After that, socket disconnects will be communicated from the reader/writer task to the client object and these tasks will then shut down. Any further request to the client will return an error. The client is not designed for reconnection. To establish a new connection, build a new client object. All detached tasks will be canceled when the client is deallocated. Errors on decoding messages from the server will be converted to Option:None for now, the client keeps running. A logger task is still to be added, as well as the communication of actual API-Errors send from the server.
 
