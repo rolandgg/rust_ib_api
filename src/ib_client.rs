@@ -216,108 +216,139 @@ impl IBClient
                     }
                 };
                 //println!("{:?}", String::from_utf8_lossy(&msg));
-                let frame = IBFrame::parse(&msg);
                 
-                match frame {
-                    //all account channels are tied directly to the client, if these channels are closed, the client is deallocated,
-                    //so we shut down the reader thread. Since the client is gone, there is no use in signaling the shutdown of the reader thread.
-                    //Since the client kills the reader thread on Drop(), this should actually never happen
-                    //and the result of 'send' could probably just as well be ignored.
-                    IBFrame::AccountCode(code) => match account_tx.account_code.send(code) {
-                        Err(_) => return,
-                        _ => ()
-                    },
-                    IBFrame::AccountType(typ) => match account_tx.account_type.send(typ){
-                        Err(_) => return,
-                        _ => ()
-                    },
-                    IBFrame::AccountUpdateTime(time) => match account_tx.update_time.send(time){
-                        Err(_) => return,
-                        _ => ()
-                    },
-                    IBFrame::CashBalance(cash) => match account_tx.cash_balance.send(cash){
-                        Err(_) => return,
-                        _ => ()
-                    },
-                    IBFrame::EquityWithLoanValue(loan) => match account_tx.equity_with_loan_value.send(loan){
-                        Err(_) => return,
-                        _ => ()
-                    },
-                    IBFrame::ExcessLiquidity(liquidity) => match account_tx.excess_liquidity.send(liquidity){
-                        Err(_) => return,
-                        _ => ()
-                    },
-                    IBFrame::NetLiquidation(nav) => match account_tx.net_liquidation.send(nav){
-                        Err(_) => return,
-                        _ => ()
-                    },
-                    IBFrame::UnrealizedPnL(u_pnl) => match account_tx.unrealized_pnl.send(u_pnl){
-                        Err(_) => return,
-                        _ => ()
-                    },
-                    IBFrame::RealizedPnL(pnl) => match account_tx.realized_pnl.send(pnl){
-                        Err(_) => return,
-                        _ => ()
-                    },
-                    IBFrame::TotalCashBalance(balance) => match account_tx.total_cash_balance.send(balance){
-                        Err(_) => return,
-                        _ => ()
-                    },
-                    IBFrame::PortfolioValue(position) => positions_cache.push(position),
-                    IBFrame::AccountUpdateEnd(_) => {
-                        match account_tx.portfolio.send(Some(positions_cache)){
+                if let Some(frame) = IBFrame::parse(&msg) {
+                    match frame {
+                        //all account channels are tied directly to the client, if these channels are closed, the client is deallocated,
+                        //so we shut down the reader thread. Since the client is gone, there is no use in signaling the shutdown of the reader thread.
+                        //Since the client kills the reader thread on Drop(), this should actually never happen
+                        //and the result of 'send' could probably just as well be ignored.
+                        IBFrame::AccountCode(code) => match account_tx.account_code.send(code) {
                             Err(_) => return,
                             _ => ()
-                        };
-                        positions_cache = Vec::new();},
-                    IBFrame::CurrentTime(dtime) => println!("Heartbeat at {}", dtime),
-                    IBFrame::OrderID(id) => {
-                        match order_id_reqs.pop_front() {
-                            //ignore potential closure of the channel, as it just means the requestor is dead
-                            //potentially just log this event, once a logger is implemented
-                            Some(sender) => { let _ = sender.send(id);},
-                            None => println!("No pending order id request.")
-                        }
-                    },
-                    IBFrame::ContractDetails{req_id: id,contract_details: details} => {
-                        //contract_details_cache.entry(id).or_insert(Vec::new());
-                        match contract_details_cache.get_mut(&id){
-                            Some(v) => v.push(details),
-                            None => {let _ = contract_details_cache.insert(id, vec![details]);}}
-                    },
-                    IBFrame::ContractDetailsEnd(req_id) => {
-                        match requests.remove_entry(&req_id) {
-                            Some((_, sender)) => {
-
-                                let _res = match contract_details_cache.remove_entry(&req_id) {
-                                    Some((_, details)) => sender.send(Response::ContractDetails(details)),
-                                    None => sender.send(Response::Empty)
-                                };
-
-                            },
-                            None => println!("No pending contract details request for req_id {}", req_id)
-                        };
-                    },
-                    IBFrame::OpenOrder{order,order_state} => {
-                        let order_id = order.order_id;
-                        match requests.remove_entry(&order_id) {
-                            Some((_, sender)) => {
-                                let (order_sender, order_receiver) = order::OrderTracker::new(order, order_state);
-                                match sender.send(Response::Order(order_receiver)){
-                                    Ok(()) => {order_trackers.insert(order_id, order_sender);},
-                                    Err(_) => ()
-                                }
-                                
-                            },
-                            None => {
-                                let mut tracker_dead: bool = false;
-                                if let Some(tracker) = order_trackers.get(&order_id) {
-                                    match tracker.order_state_tx.send(order_state) {
-                                        Err(_) => {tracker_dead = true;},
-                                        _ => ()
+                        },
+                        IBFrame::AccountType(typ) => match account_tx.account_type.send(typ){
+                            Err(_) => return,
+                            _ => ()
+                        },
+                        IBFrame::AccountUpdateTime(time) => match account_tx.update_time.send(time){
+                            Err(_) => return,
+                            _ => ()
+                        },
+                        IBFrame::CashBalance(cash) => match account_tx.cash_balance.send(cash){
+                            Err(_) => return,
+                            _ => ()
+                        },
+                        IBFrame::EquityWithLoanValue(loan) => match account_tx.equity_with_loan_value.send(loan){
+                            Err(_) => return,
+                            _ => ()
+                        },
+                        IBFrame::ExcessLiquidity(liquidity) => match account_tx.excess_liquidity.send(liquidity){
+                            Err(_) => return,
+                            _ => ()
+                        },
+                        IBFrame::NetLiquidation(nav) => match account_tx.net_liquidation.send(nav){
+                            Err(_) => return,
+                            _ => ()
+                        },
+                        IBFrame::UnrealizedPnL(u_pnl) => match account_tx.unrealized_pnl.send(u_pnl){
+                            Err(_) => return,
+                            _ => ()
+                        },
+                        IBFrame::RealizedPnL(pnl) => match account_tx.realized_pnl.send(pnl){
+                            Err(_) => return,
+                            _ => ()
+                        },
+                        IBFrame::TotalCashBalance(balance) => match account_tx.total_cash_balance.send(balance){
+                            Err(_) => return,
+                            _ => ()
+                        },
+                        IBFrame::PortfolioValue(position) => positions_cache.push(position),
+                        IBFrame::AccountUpdateEnd(_) => {
+                            match account_tx.portfolio.send(Some(positions_cache)){
+                                Err(_) => return,
+                                _ => ()
+                            };
+                            positions_cache = Vec::new();},
+                        IBFrame::CurrentTime(dtime) => println!("Heartbeat at {}", dtime),
+                        IBFrame::OrderID(id) => {
+                            match order_id_reqs.pop_front() {
+                                //ignore potential closure of the channel, as it just means the requestor is dead
+                                //potentially just log this event, once a logger is implemented
+                                Some(sender) => { let _ = sender.send(id);},
+                                None => println!("No pending order id request.")
+                            }
+                        },
+                        IBFrame::ContractDetails{req_id: id,contract_details: details} => {
+                            //contract_details_cache.entry(id).or_insert(Vec::new());
+                            match contract_details_cache.get_mut(&id){
+                                Some(v) => v.push(details),
+                                None => {let _ = contract_details_cache.insert(id, vec![details]);}}
+                        },
+                        IBFrame::ContractDetailsEnd(req_id) => {
+                            match requests.remove_entry(&req_id) {
+                                Some((_, sender)) => {
+    
+                                    let _res = match contract_details_cache.remove_entry(&req_id) {
+                                        Some((_, details)) => sender.send(Response::ContractDetails(details)),
+                                        None => sender.send(Response::Empty)
+                                    };
+    
+                                },
+                                None => println!("No pending contract details request for req_id {}", req_id)
+                            };
+                        },
+                        IBFrame::OpenOrder{order,order_state} => {
+                            let order_id = order.order_id;
+                            match requests.remove_entry(&order_id) {
+                                Some((_, sender)) => {
+                                    let (order_sender, order_receiver) = order::OrderTracker::new(order, order_state);
+                                    match sender.send(Response::Order(order_receiver)){
+                                        Ok(()) => {order_trackers.insert(order_id, order_sender);},
+                                        Err(_) => ()
                                     }
-                                    match tracker.order_tx.send(order){
-                                        Err(_) => {tracker_dead = true;},
+                                    
+                                },
+                                None => {
+                                    let mut tracker_dead: bool = false;
+                                    if let Some(tracker) = order_trackers.get(&order_id) {
+                                        match tracker.order_state_tx.send(order_state) {
+                                            Err(_) => {tracker_dead = true;},
+                                            _ => ()
+                                        }
+                                        match tracker.order_tx.send(order){
+                                            Err(_) => {tracker_dead = true;},
+                                            _ => ()
+                                        }
+                                    }
+                                    if tracker_dead {
+                                        order_trackers.remove(&order_id);
+                                    }
+                                }
+                            }
+                            
+                        },
+                        IBFrame::Execution(execution) => {
+                            let mut tracker_dead: bool = false;
+                            let order_id = execution.order_id;
+                            let exec_id = execution.exec_id.clone();
+                            if let Some(tracker) = order_trackers.get_mut(&execution.order_id) {
+                                
+                                match tracker.executions_tx.send(execution){
+                                    Err(_) => {tracker_dead = true;},
+                                    Ok(()) => {executions_cache.insert(exec_id, order_id);}
+                                }
+                            }
+                            if tracker_dead {
+                                order_trackers.remove(&order_id);
+                            }
+                        },
+                        IBFrame::CommissionReport(report) => {
+                            let mut tracker_dead = false;
+                            if let Some((_,order_id)) = executions_cache.remove_entry(&report.exec_id) {
+                                if let Some(tracker) = order_trackers.get_mut(&order_id) {
+                                    match tracker.commission_reports_tx.send(report) {
+                                        Err(_error) => tracker_dead = true,
                                         _ => ()
                                     }
                                 }
@@ -325,29 +356,13 @@ impl IBClient
                                     order_trackers.remove(&order_id);
                                 }
                             }
-                        }
-                        
-                    },
-                    IBFrame::Execution(execution) => {
-                        let mut tracker_dead: bool = false;
-                        let order_id = execution.order_id;
-                        let exec_id = execution.exec_id.clone();
-                        if let Some(tracker) = order_trackers.get_mut(&execution.order_id) {
-                            
-                            match tracker.executions_tx.send(execution){
-                                Err(_) => {tracker_dead = true;},
-                                Ok(()) => {executions_cache.insert(exec_id, order_id);}
-                            }
-                        }
-                        if tracker_dead {
-                            order_trackers.remove(&order_id);
-                        }
-                    },
-                    IBFrame::CommissionReport(report) => {
-                        let mut tracker_dead = false;
-                        if let Some((_,order_id)) = executions_cache.remove_entry(&report.exec_id) {
-                            if let Some(tracker) = order_trackers.get_mut(&order_id) {
-                                match tracker.commission_reports_tx.send(report) {
+    
+                        },
+                        IBFrame::OrderStatus(status) => {
+                            let mut tracker_dead = false;
+                            let order_id = status.order_id;
+                            if let Some(tracker) = order_trackers.get(&status.order_id) {
+                                match tracker.order_status_tx.send(Some(status)) {
                                     Err(_error) => tracker_dead = true,
                                     _ => ()
                                 }
@@ -356,106 +371,93 @@ impl IBClient
                                 order_trackers.remove(&order_id);
                             }
                         }
-
-                    },
-                    IBFrame::OrderStatus(status) => {
-                        let mut tracker_dead = false;
-                        let order_id = status.order_id;
-                        if let Some(tracker) = order_trackers.get(&status.order_id) {
-                            match tracker.order_status_tx.send(Some(status)) {
-                                Err(_error) => tracker_dead = true,
-                                _ => ()
+                        IBFrame::PriceTick{id, kind, price, size, ..} => {
+                            if let Some((_, req)) = requests.remove_entry(&id) {
+                                let (ticker_sender, ticker) = ticker::Ticker::new();
+                                if let Ok(()) = req.send(Response::Ticker(ticker)) {tickers.insert(id, ticker_sender);} else {continue}; //else: request is dead
+                            }
+                            if let Some(t) = tickers.get_mut(&id) {
+                                let ok = match kind {
+                                    TickType::Bid | TickType::DelayedBid => {
+                                        if let Err(_) = t.bid.send(Some(price)) {false}
+                                        else if let Err(_) = t.bid_size.send(size) {false}
+                                        else {true}
+                                    },
+                                    TickType::Ask | TickType::DelayedAsk => {
+                                        if let Err(_) = t.ask.send(Some(price)) {false}
+                                        else if let Err(_) = t.ask_size.send(size) {false}
+                                        else {true}
+    
+                                    },
+                                    TickType::Last | TickType::DelayedLast => {
+                                        if let Err(_) = t.last.send(Some(price)) {false}
+                                        else if let Err(_) = t.last_size.send(size) {false}
+                                        else {true}
+                                    }
+                                    _ => true
+                                };
+                                if !ok {tickers.remove_entry(&id);}    //ticker dead
+                            };
+                        },
+                        IBFrame::SizeTick{id, kind, size} => {
+                            if let Some((_, req)) = requests.remove_entry(&id) {
+                                let (ticker_sender, ticker) = ticker::Ticker::new();
+                                tickers.insert(id, ticker_sender);
+                                if let Ok(()) = req.send(Response::Ticker(ticker)) {} else {continue}; //else: request is dead
+                            }
+                            if let Some(t) = tickers.get_mut(&id) {
+                                let ok = match kind {
+                                    TickType::BidSize | TickType::DelayedBidSize => {
+                                        if let Err(_) = t.bid_size.send(Some(size)) {false}
+                                        else {true}
+                                    },
+                                    TickType::AskSize | TickType::DelayedAskSize => {
+                                        if let Err(_) = t.ask_size.send(Some(size)) {false}
+                                        else {true}
+    
+                                    },
+                                    TickType::LastSize | TickType::DelayedLastSize => {
+                                        if let Err(_) = t.last_size.send(Some(size)) {false}
+                                        else {true}
+                                    }
+                                    TickType::ShortableShares => {
+                                        if let Err(_) = t.shortable_shares.send(Some(size)) {false}
+                                        else {true}
+                                    }
+                                    _ => true
+                                };
+                                if !ok {tickers.remove_entry(&id);}    //ticker dead
+                            };
+                        },
+                        IBFrame::GenericTick{id, kind, val} => {
+                            if let Some((_, req)) = requests.remove_entry(&id) {
+                                let (ticker_sender, ticker) = ticker::Ticker::new();
+                                tickers.insert(id, ticker_sender);
+                                if let Ok(()) = req.send(Response::Ticker(ticker)) {} else {continue}; //else: request is dead
+                            }
+                            if let Some(t) = tickers.get_mut(&id) {
+                                let ok = match kind {
+                                    TickType::Shortable => {
+                                        if let Err(_) = t.short_availability.send(Some(ticker::ShortAvailability::from_f64(val))) {false}
+                                        else {true}
+                                    }
+                                    _ => true
+                                };
+                                if !ok {tickers.remove_entry(&id);}    //ticker is dead
+                            };
+                        },
+                        IBFrame::Bars{id, data} => {
+                            if let Some((_, req)) = requests.remove_entry(&id) {
+                                let _ = req.send(Response::Bars(data));
                             }
                         }
-                        if tracker_dead {
-                            order_trackers.remove(&order_id);
+                        IBFrame::Error{id, code, msg} => {
+    
                         }
-                    }
-                    IBFrame::PriceTick{id, kind, price, size, ..} => {
-                        if let Some((_, req)) = requests.remove_entry(&id) {
-                            let (ticker_sender, ticker) = ticker::Ticker::new();
-                            if let Ok(()) = req.send(Response::Ticker(ticker)) {tickers.insert(id, ticker_sender);} else {continue}; //else: request is dead
-                        }
-                        if let Some(t) = tickers.get_mut(&id) {
-                            let ok = match kind {
-                                TickType::Bid | TickType::DelayedBid => {
-                                    if let Err(_) = t.bid.send(Some(price)) {false}
-                                    else if let Err(_) = t.bid_size.send(size) {false}
-                                    else {true}
-                                },
-                                TickType::Ask | TickType::DelayedAsk => {
-                                    if let Err(_) = t.ask.send(Some(price)) {false}
-                                    else if let Err(_) = t.ask_size.send(size) {false}
-                                    else {true}
-
-                                },
-                                TickType::Last | TickType::DelayedLast => {
-                                    if let Err(_) = t.last.send(Some(price)) {false}
-                                    else if let Err(_) = t.last_size.send(size) {false}
-                                    else {true}
-                                }
-                                _ => true
-                            };
-                            if !ok {tickers.remove_entry(&id);}    //ticker dead
-                        };
-                    },
-                    IBFrame::SizeTick{id, kind, size} => {
-                        if let Some((_, req)) = requests.remove_entry(&id) {
-                            let (ticker_sender, ticker) = ticker::Ticker::new();
-                            tickers.insert(id, ticker_sender);
-                            if let Ok(()) = req.send(Response::Ticker(ticker)) {} else {continue}; //else: request is dead
-                        }
-                        if let Some(t) = tickers.get_mut(&id) {
-                            let ok = match kind {
-                                TickType::BidSize | TickType::DelayedBidSize => {
-                                    if let Err(_) = t.bid_size.send(Some(size)) {false}
-                                    else {true}
-                                },
-                                TickType::AskSize | TickType::DelayedAskSize => {
-                                    if let Err(_) = t.ask_size.send(Some(size)) {false}
-                                    else {true}
-
-                                },
-                                TickType::LastSize | TickType::DelayedLastSize => {
-                                    if let Err(_) = t.last_size.send(Some(size)) {false}
-                                    else {true}
-                                }
-                                TickType::ShortableShares => {
-                                    if let Err(_) = t.shortable_shares.send(Some(size)) {false}
-                                    else {true}
-                                }
-                                _ => true
-                            };
-                            if !ok {tickers.remove_entry(&id);}    //ticker dead
-                        };
-                    },
-                    IBFrame::GenericTick{id, kind, val} => {
-                        if let Some((_, req)) = requests.remove_entry(&id) {
-                            let (ticker_sender, ticker) = ticker::Ticker::new();
-                            tickers.insert(id, ticker_sender);
-                            if let Ok(()) = req.send(Response::Ticker(ticker)) {} else {continue}; //else: request is dead
-                        }
-                        if let Some(t) = tickers.get_mut(&id) {
-                            let ok = match kind {
-                                TickType::Shortable => {
-                                    if let Err(_) = t.short_availability.send(Some(ticker::ShortAvailability::from_f64(val))) {false}
-                                    else {true}
-                                }
-                                _ => true
-                            };
-                            if !ok {tickers.remove_entry(&id);}    //ticker is dead
-                        };
-                    },
-                    IBFrame::Bars{id, data} => {
-                        if let Some((_, req)) = requests.remove_entry(&id) {
-                            let _ = req.send(Response::Bars(data));
-                        }
-                    }
-                    IBFrame::Error{id, code, msg} => {
-
-                    }
-                    _ => ()
-                };
+                        _ => ()
+                    };
+                }
+                
             }
         }, reader_abort_registration);
         let _reader_task = tokio::spawn(reader_fut);

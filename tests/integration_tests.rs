@@ -203,7 +203,7 @@ async fn historical_data() {
     match &client.req_historical_data(&contract, &end_dt.unwrap(), HistoricalDataDuration::Months(1), HistoricalDataBarSize::OneDay,
     HistoricalDataType::Midpoint, true).await {
         Ok(bars) => {
-            assert!(bars.n_bars > 0);
+            assert!(bars.n_bars.is_some());
         },
         Err(_error) => panic!("Bar series loading not successful!")
     }
