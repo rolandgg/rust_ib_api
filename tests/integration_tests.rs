@@ -1,10 +1,10 @@
-use rs_ib_api::ib_client::IBClient;
-use rs_ib_api::ib_contract::*;
+use rs_ib_api::client::IBClient;
+use rs_ib_api::contract::*;
 use rs_ib_api::order::Order;
 use tokio::time;
 use chrono::Duration;
 use chrono::{TimeZone, Utc, DateTime};
-use rs_ib_api::ib_enums::*;
+use rs_ib_api::enums::*;
 use rust_decimal::prelude::*;
 
 #[tokio::test]
@@ -22,17 +22,11 @@ async fn contract_details() {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
-    let contract = Contract {
-        symbol: Some("AAPL".to_string()),
-        exchange: Some("SMART".to_string()),
-        sec_type: Some(SecType::Stock),
-        currency: Some("USD".to_string()),
-        ..Default::default()
-    }; 
+    let contract = Contract::stock("AAPL", "SMART", "USD");
     match client.req_contract_details(&contract).await {
         Ok(details) => for detail in &details {
-            match &detail.contract {
-                Some(contract) => assert_eq!(contract.symbol, Some("AAPL".to_string())),
+            match &detail.contract() {
+                Some(contract) => assert_eq!(contract.symbol(), &Some("AAPL".to_string())),
                 None => panic!("No valid contract details returned for AAPL")
             }
         }
@@ -46,13 +40,7 @@ async fn liquid_hours() {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
-    let contract = Contract {
-        symbol: Some("AAPL".to_string()),
-        exchange: Some("SMART".to_string()),
-        sec_type: Some(SecType::Stock),
-        currency: Some("USD".to_string()),
-        ..Default::default()
-    }; 
+    let contract = Contract::stock("AAPL", "SMART", "USD");
     match client.req_contract_details(&contract).await {
         Ok(details) => for detail in &details {
             assert!(detail.liquid_hours().is_some());
@@ -67,13 +55,7 @@ async fn place_market_order() {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
-    let contract = Contract {
-        symbol: Some("AAPL".to_string()),
-        exchange: Some("SMART".to_string()),
-        sec_type: Some(SecType::Stock),
-        currency: Some("USD".to_string()),
-        ..Default::default()
-    };
+    let contract = Contract::stock("AAPL", "SMART", "USD");
     let order = Order::market(contract, Action::Buy, Decimal::new(10,0));
     match &mut client.place_order(&order).await {
         Ok(tracker) => {
@@ -90,20 +72,11 @@ async fn place_spread_market_order() {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
-    let mut legs = Vec::new();
-    legs.push(ComboLeg::new(43645865, 1, ComboAction::Buy, "SMART")); //IBKR
-    legs.push(ComboLeg::new(9408, 1, ComboAction::Sell, "SMART")); //MCD
-    let contract = Contract {
-        symbol: Some("IBKR,MCD".to_string()),
-        exchange: Some("SMART".to_string()),
-        sec_type: Some(SecType::Combo),
-        currency: Some("USD".to_string()),
-        combo_legs: Some(legs),
-        ..Default::default()
-    };
+    let mut contract = Contract::combo("IBKR,MCD", "SMART", "USD");
+    contract.add_leg(ComboLeg::new(43645865, 1, ComboAction::Buy, "SMART"));
+    contract.add_leg(ComboLeg::new(9408, 1, ComboAction::Sell, "SMART"));
 
-    let mut order = Order::market(contract, Action::Buy, Decimal::new(10,0));
-    order.smart_combo_routing_params = Some(vec![("NonGuaranteed".to_string(), "1".to_string())]);
+    let mut order = Order::market(contract, Action::Buy, Decimal::new(10,0)).combo();
     match &mut client.place_order(&order).await {
         Ok(tracker) => {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -119,13 +92,7 @@ async fn market_data() {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
-    let contract = Contract {
-        symbol: Some("AAPL".to_string()),
-        exchange: Some("SMART".to_string()),
-        sec_type: Some(SecType::Stock),
-        currency: Some("USD".to_string()),
-        ..Default::default()
-    };
+    let contract = Contract::stock("AAPL", "SMART", "USD");
     match &client.req_market_data(&contract, false, false,
          Some(vec![GenericTickType::ShortableData])).await {
         Ok(ticker) => {
@@ -143,13 +110,7 @@ async fn delayed_market_data() {
         Err(_error) => panic!("Connection not successful!")
     };
     client.set_mkt_data_delayed().await;
-    let contract = Contract {
-        symbol: Some("AAPL".to_string()),
-        exchange: Some("SMART".to_string()),
-        sec_type: Some(SecType::Stock),
-        currency: Some("USD".to_string()),
-        ..Default::default()
-    };
+    let contract = Contract::stock("AAPL", "SMART", "USD");
     match &client.req_market_data(&contract, false, false,
          Some(vec![GenericTickType::ShortableData])).await {
         Ok(ticker) => {
@@ -167,13 +128,7 @@ async fn snapshot_data() {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
-    let contract = Contract {
-        symbol: Some("AAPL".to_string()),
-        exchange: Some("SMART".to_string()),
-        sec_type: Some(SecType::Stock),
-        currency: Some("USD".to_string()),
-        ..Default::default()
-    };
+    let contract = Contract::stock("AAPL", "SMART", "USD");
     match &client.req_market_data(&contract, true, false,
          None).await {
         Ok(ticker) => {
@@ -191,13 +146,7 @@ async fn historical_data() {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
-    let contract = Contract {
-        symbol: Some("AAPL".to_string()),
-        exchange: Some("SMART".to_string()),
-        sec_type: Some(SecType::Stock),
-        currency: Some("USD".to_string()),
-        ..Default::default()
-    };
+    let contract = Contract::stock("AAPL", "SMART", "USD");
     let end_dt = Utc.datetime_from_str("2020-03-01 00:00:00", "%Y-%m-%d %H:%M:%S");
 
     match &client.req_historical_data(&contract, &end_dt.unwrap(), HistoricalDataDuration::Months(1), HistoricalDataBarSize::OneDay,

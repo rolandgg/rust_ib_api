@@ -1,9 +1,11 @@
-use crate::ib_enums::*;
+use crate::enums::*;
 use rust_decimal::prelude::*;
 use crate::utils::ib_message::Encodable;
-use crate::ib_contract::Contract;
+use crate::contract::Contract;
 use crossbeam::channel;
 use tokio::sync::watch;
+
+///Is returned upon successful submission of an order and allows to track the order state.
 #[derive(Debug,Clone)]
 pub struct OrderTracker {
     order_rx: watch::Receiver<Order>,
@@ -18,7 +20,7 @@ pub struct OrderTracker {
     commission_reports_rx: channel::Receiver<CommissionReport>
 }
 
-pub struct OrderTrackerSender {
+pub(crate) struct OrderTrackerSender {
     pub executions_tx: channel::Sender<Execution>,
     pub order_tx: watch::Sender<Order>,
     pub order_status_tx: watch::Sender<Option<OrderStatus>>,
@@ -27,7 +29,7 @@ pub struct OrderTrackerSender {
 }
 
 impl OrderTracker {
-    pub fn new(order: Order, order_state: OrderState) -> (OrderTrackerSender, Self) {
+    pub(crate) fn new(order: Order, order_state: OrderState) -> (OrderTrackerSender, Self) {
         let (executions_tx, executions_rx) = channel::unbounded();
         let (commission_reports_tx, commission_reports_rx) = channel::unbounded();
         let (order_status_tx, order_status_rx) = watch::channel(None);
@@ -63,14 +65,14 @@ impl OrderTracker {
             self.commission_reports.push(com);
         }
     }
-
+    ///Returns the order status.
     pub fn status(&self) -> Option<String> {
         match &*self.order_status_rx.borrow() {
             Some(stat) => stat.status.clone(),
             None => None
         }
     }
-
+    ///Checks if the order status is 'filled', i.e. the order execution is completed.
     pub fn is_filled(&self) -> Option<bool> {
         if let Some(stat) = &*self.order_status_rx.borrow() {
             if let Some(st) = &stat.status{
@@ -82,25 +84,25 @@ impl OrderTracker {
         }
         return None;
     }
-
+    ///Returns the time when the order was completely filled.
     pub fn fill_time(&self) -> Option<String> {
         self.order_state_rx.borrow().completed_time.clone() 
     }
-
+    ///Returns the currently filled quantity.
     pub fn qty_filled(&self) -> Option<Decimal> {
         match &*self.order_status_rx.borrow() {
             Some(stat) => stat.filled.clone(),
             None => None
         }
     }
-
+    ///Returns the average fill price.
     pub fn avg_fill_price(&self) -> Option<Decimal> {
         match &*self.order_status_rx.borrow() {
             Some(stat) => stat.avg_fill_price.clone(),
             None => None
         }
     }
-
+    ///Returns total commissions paid.
     pub fn commissions_paid(&mut self) -> Option<Decimal> {
         self.update_com();
         if self.commission_reports.len() > 0 {
@@ -113,196 +115,199 @@ impl OrderTracker {
 }
 
 #[derive(Default,Debug,Clone)]
-pub struct SoftDollarTier {
-    pub name: Option<String>,
-    pub val: Option<String>,
-    pub display_name: Option<String>
+pub(crate) struct SoftDollarTier {
+    pub(crate) name: Option<String>,
+    pub(crate) val: Option<String>,
+    pub(crate) display_name: Option<String>
 }
 
+/// Holds all order parameters. This is a huge struct with more than 150 fields. Orders are created through
+/// factory functions ensuring that the created orders are in a valid state accepted by the TWS API.
+/// Only basic order types are currently supported.
 #[derive(Default,Debug,Clone)]
 pub struct Order {
 
     //contract
-    pub contract: Contract,
+    pub(crate) contract: Contract,
 
     //order identification
-    pub order_id: i32,
-    pub client_id: Option<usize>,
-    pub perm_id: Option<i32>,
+    pub(crate) order_id: i32,
+    pub(crate) client_id: Option<usize>,
+    pub(crate) perm_id: Option<i32>,
 
     //main order fields
-    pub action: Option<Action>,
-    pub total_qty: Option<Decimal>,
-    pub order_type: Option<OrderType>,
-    pub lmt_price: Option<Decimal>,
-    pub aux_price: Option<Decimal>,
+    pub(crate) action: Option<Action>,
+    pub(crate) total_qty: Option<Decimal>,
+    pub(crate) order_type: Option<OrderType>,
+    pub(crate) lmt_price: Option<Decimal>,
+    pub(crate) aux_price: Option<Decimal>,
 
     //extended order fields
-    pub tif: Option<TimeInForce>,
-    pub active_start_time: Option<String>,
-    pub active_stop_time: Option<String>,
-    pub oca_group: Option<String>,
-    pub oca_type: Option<OCAType>,
-    pub order_ref: Option<String>,
-    pub transmit: Option<bool>,
-    pub parent_id: Option<usize>,
-    pub block_order: Option<bool>,
-    pub sweep_to_fill: Option<bool>,
-    pub display_size: Option<i32>,
-    pub trigger_method: Option<TriggerMethod>,
-    pub outside_rth: Option<bool>,
-    pub hidden: Option<bool>,
-    pub good_after_time: Option<String>,
-    pub good_till_date: Option<String>,
-    pub override_percentage_constraints: Option<bool>,
-    pub rule_80A: Option<Rule80A>,
-    pub all_or_none: Option<bool>,
-    pub min_qty: Option<i32>,
-    pub percent_offset: Option<f64>,
-    pub trail_stop_price: Option<Decimal>,
-    pub trailing_percent: Option<f64>,
+    pub(crate) tif: Option<TimeInForce>,
+    pub(crate) active_start_time: Option<String>,
+    pub(crate) active_stop_time: Option<String>,
+    pub(crate) oca_group: Option<String>,
+    pub(crate) oca_type: Option<OCAType>,
+    pub(crate) order_ref: Option<String>,
+    pub(crate) transmit: Option<bool>,
+    pub(crate) parent_id: Option<usize>,
+    pub(crate) block_order: Option<bool>,
+    pub(crate) sweep_to_fill: Option<bool>,
+    pub(crate) display_size: Option<i32>,
+    pub(crate) trigger_method: Option<TriggerMethod>,
+    pub(crate) outside_rth: Option<bool>,
+    pub(crate) hidden: Option<bool>,
+    pub(crate) good_after_time: Option<String>,
+    pub(crate) good_till_date: Option<String>,
+    pub(crate) override_percentage_constraints: Option<bool>,
+    pub(crate) rule_80A: Option<Rule80A>,
+    pub(crate) all_or_none: Option<bool>,
+    pub(crate) min_qty: Option<i32>,
+    pub(crate) percent_offset: Option<f64>,
+    pub(crate) trail_stop_price: Option<Decimal>,
+    pub(crate) trailing_percent: Option<f64>,
 
     // financial advisor fields
-    pub fa_group: Option<String>,
-    pub fa_profile: Option<String>,
-    pub fa_method: Option<String>,
-    pub fa_percentage: Option<String>,
+    pub(crate) fa_group: Option<String>,
+    pub(crate) fa_profile: Option<String>,
+    pub(crate) fa_method: Option<String>,
+    pub(crate) fa_percentage: Option<String>,
 
     // institutional (i.e. non-cleared) only
-    pub open_close: Option<OrderOpenClose>,
-    pub origin: Option<Origin>,
-    pub short_sale_slot: Option<ShortSaleSlot>,
-    pub designated_location: Option<String>,
-    pub exempt_code: Option<i32>,
+    pub(crate) open_close: Option<OrderOpenClose>,
+    pub(crate) origin: Option<Origin>,
+    pub(crate) short_sale_slot: Option<ShortSaleSlot>,
+    pub(crate) designated_location: Option<String>,
+    pub(crate) exempt_code: Option<i32>,
 
     // SMART routing fields
-    pub discretionary_amt: Option<f64>,
-    pub e_trade_only: Option<bool>,
-    pub firm_quote_only: Option<bool>,
-    pub nbbo_price_cap: Option<Decimal>,
-    pub opt_out_smart_routing: Option<bool>,
+    pub(crate) discretionary_amt: Option<f64>,
+    pub(crate) e_trade_only: Option<bool>,
+    pub(crate) firm_quote_only: Option<bool>,
+    pub(crate) nbbo_price_cap: Option<Decimal>,
+    pub(crate) opt_out_smart_routing: Option<bool>,
 
     // BOX exchange order fields
-    pub auction_strategy: Option<AuctionStrategy>,
-    pub starting_price: Option<Decimal>,
-    pub stock_ref_price: Option<Decimal>,
-    pub delta: Option<f64>,
+    pub(crate) auction_strategy: Option<AuctionStrategy>,
+    pub(crate) starting_price: Option<Decimal>,
+    pub(crate) stock_ref_price: Option<Decimal>,
+    pub(crate) delta: Option<f64>,
 
     // Pegged to stock and VOL order fields
 
-    pub stock_range_lower: Option<Decimal>,
-    pub stock_range_upper: Option<Decimal>,
+    pub(crate) stock_range_lower: Option<Decimal>,
+    pub(crate) stock_range_upper: Option<Decimal>,
 
-    pub randomize_size: Option<bool>,
-    pub randomize_price: Option<bool>,
+    pub(crate) randomize_size: Option<bool>,
+    pub(crate) randomize_price: Option<bool>,
 
     // Volatility order fields
-    pub volatility: Option<f64>,
-    pub volatility_type: Option<VolatilityType>,
-    pub delta_neutral_order_type: Option<OrderType>,
-    pub delta_neutral_aux_price: Option<Decimal>,
-    pub delta_neutral_con_id: Option<usize>,
-    pub delta_neutral_settling_firm: Option<String>,
-    pub delta_neutral_clearing_account: Option<String>,
-    pub delta_neutral_clearing_intent: Option<String>,
-    pub delta_neutral_open_close: Option<String>,
-    pub delta_neutral_short_sale: Option<bool>,
-    pub delta_neutral_short_sale_slot: Option<bool>,
-    pub delta_neutral_designated_location: Option<String>,
-    pub continuous_update: Option<bool>,
-    pub reference_price_type: Option<ReferencePriceType>,
+    pub(crate) volatility: Option<f64>,
+    pub(crate) volatility_type: Option<VolatilityType>,
+    pub(crate) delta_neutral_order_type: Option<OrderType>,
+    pub(crate) delta_neutral_aux_price: Option<Decimal>,
+    pub(crate) delta_neutral_con_id: Option<usize>,
+    pub(crate) delta_neutral_settling_firm: Option<String>,
+    pub(crate) delta_neutral_clearing_account: Option<String>,
+    pub(crate) delta_neutral_clearing_intent: Option<String>,
+    pub(crate) delta_neutral_open_close: Option<String>,
+    pub(crate) delta_neutral_short_sale: Option<bool>,
+    pub(crate) delta_neutral_short_sale_slot: Option<bool>,
+    pub(crate) delta_neutral_designated_location: Option<String>,
+    pub(crate) continuous_update: Option<bool>,
+    pub(crate) reference_price_type: Option<ReferencePriceType>,
 
     // Combo order fields
-    pub basis_points: Option<Decimal>,
-    pub basis_points_type: Option<BasisPointsType>,
+    pub(crate) basis_points: Option<Decimal>,
+    pub(crate) basis_points_type: Option<BasisPointsType>,
 
     // Scale order fields
-    pub scale_init_level_size: Option<i32>,
-    pub scale_subs_level_size: Option<i32>,
-    pub scale_price_increment: Option<f64>,
-    pub scale_price_adjust_value: Option<f64>,
-    pub scale_price_adjust_interval: Option<i32>,
-    pub scale_profit_offset: Option<f64>,
-    pub scale_auto_reset: Option<bool>,
-    pub scale_init_position: Option<i32>,
-    pub scale_init_fill_qty: Option<i32>,
-    pub scale_random_percent: Option<bool>,
-    pub scale_table: Option<String>,
+    pub(crate) scale_init_level_size: Option<i32>,
+    pub(crate) scale_subs_level_size: Option<i32>,
+    pub(crate) scale_price_increment: Option<f64>,
+    pub(crate) scale_price_adjust_value: Option<f64>,
+    pub(crate) scale_price_adjust_interval: Option<i32>,
+    pub(crate) scale_profit_offset: Option<f64>,
+    pub(crate) scale_auto_reset: Option<bool>,
+    pub(crate) scale_init_position: Option<i32>,
+    pub(crate) scale_init_fill_qty: Option<i32>,
+    pub(crate) scale_random_percent: Option<bool>,
+    pub(crate) scale_table: Option<String>,
 
     // Hedge order fields
-    pub hedge_type: Option<HedgeType>,
-    pub hedge_param: Option<String>, // 'beta=X' value for beta hedge, 'ratio=Y' for pair hedge
+    pub(crate) hedge_type: Option<HedgeType>,
+    pub(crate) hedge_param: Option<String>, // 'beta=X' value for beta hedge, 'ratio=Y' for pair hedge
 
     // Clearing info
-    pub account: Option<String>,
-    pub settling_firm: Option<String>,
-    pub clearing_account: Option<String>,
-    pub clearing_intent: Option<ClearingIntent>,
+    pub(crate) account: Option<String>,
+    pub(crate) settling_firm: Option<String>,
+    pub(crate) clearing_account: Option<String>,
+    pub(crate) clearing_intent: Option<ClearingIntent>,
 
     // Algo order fields
-    pub algo_strategy: Option<String>,
-    pub algo_params: Option<Vec<(String,String)>>,
-    pub smart_combo_routing_params: Option<Vec<(String,String)>>,
-    pub algo_id: Option<String>,
+    pub(crate) algo_strategy: Option<String>,
+    pub(crate) algo_params: Option<Vec<(String,String)>>,
+    pub(crate) smart_combo_routing_params: Option<Vec<(String,String)>>,
+    pub(crate) algo_id: Option<String>,
 
     // What-if
-    pub what_if: Option<bool>,
+    pub(crate) what_if: Option<bool>,
 
     // Not held
-    pub not_held: Option<bool>,
-    pub solicited: Option<bool>,
+    pub(crate) not_held: Option<bool>,
+    pub(crate) solicited: Option<bool>,
 
     // Models
-    pub model_code: Option<String>,
+    pub(crate) model_code: Option<String>,
 
     // Order combo legs
 
-    pub order_combo_legs: Option<Vec<Option<Decimal>>>,
-    pub order_misc_options: Option<Vec<(String,String)>>,
+    pub(crate) order_combo_legs: Option<Vec<Option<Decimal>>>,
+    pub(crate) order_misc_options: Option<Vec<(String,String)>>,
 
     // VER PEG2BENCH fields
 
-    pub reference_contract_id: Option<i32>,
-    pub pegged_change_amount: Option<f64>,
-    pub is_pegged_change_amount_decrease: Option<bool>,
-    pub reference_change_amount: Option<f64>,
-    pub reference_exchange_id: Option<String>,
-    pub adjusted_order_type: Option<String>,
-    pub trigger_price: Option<f64>,
-    pub adjusted_stop_price: Option<f64>,
-    pub adjusted_stop_limit_price: Option<f64>,
-    pub adjusted_trailing_amount: Option<f64>,
-    pub adjustable_trailing_unit: Option<i32>,
-    pub lmt_price_offset: Option<f64>,
+    pub(crate) reference_contract_id: Option<i32>,
+    pub(crate) pegged_change_amount: Option<f64>,
+    pub(crate) is_pegged_change_amount_decrease: Option<bool>,
+    pub(crate) reference_change_amount: Option<f64>,
+    pub(crate) reference_exchange_id: Option<String>,
+    pub(crate) adjusted_order_type: Option<String>,
+    pub(crate) trigger_price: Option<f64>,
+    pub(crate) adjusted_stop_price: Option<f64>,
+    pub(crate) adjusted_stop_limit_price: Option<f64>,
+    pub(crate) adjusted_trailing_amount: Option<f64>,
+    pub(crate) adjustable_trailing_unit: Option<i32>,
+    pub(crate) lmt_price_offset: Option<f64>,
 
-    pub conditions: Option<Vec<Option<OrderConditionType>>>,
-    pub conditions_cancel_order: Option<bool>,
-    pub conditions_ignore_rth: Option<bool>,
+    pub(crate) conditions: Option<Vec<Option<OrderConditionType>>>,
+    pub(crate) conditions_cancel_order: Option<bool>,
+    pub(crate) conditions_ignore_rth: Option<bool>,
 
     // ext operator
-    pub ext_operator: Option<String>,
+    pub(crate) ext_operator: Option<String>,
 
-    pub soft_dollar_tier: Option<SoftDollarTier>,
+    pub(crate) soft_dollar_tier: Option<SoftDollarTier>,
 
-    pub cash_qty: Option<Decimal>,
+    pub(crate) cash_qty: Option<Decimal>,
 
-    pub mifid_2_decision_maker: Option<String>,
-    pub mifid_2_decision_algo: Option<String>,
-    pub mifid_2_execution_trader: Option<String>,
-    pub mifid_2_execution_algo: Option<String>,
+    pub(crate) mifid_2_decision_maker: Option<String>,
+    pub(crate) mifid_2_decision_algo: Option<String>,
+    pub(crate) mifid_2_execution_trader: Option<String>,
+    pub(crate) mifid_2_execution_algo: Option<String>,
 
-    pub dont_use_auto_price_for_hedge: Option<bool>,
-    pub is_oms_container: Option<bool>,
-    pub discretionary_up_to_limit_price: Option<bool>,
-    pub auto_cancel_date: Option<String>,
-    pub filled_quantity: Option<Decimal>,
-    pub ref_futures_con_id: Option<usize>,
-    pub auto_cancel_parent: Option<bool>,
-    pub shareholder: Option<String>,
-    pub imbalance_only: Option<bool>,
-    pub route_marketable_to_bbo: Option<bool>,
-    pub parent_perm_id: Option<usize>,
-    pub use_price_mgmt_algo: Option<UsePriceMgmtAlgo>
+    pub(crate) dont_use_auto_price_for_hedge: Option<bool>,
+    pub(crate) is_oms_container: Option<bool>,
+    pub(crate) discretionary_up_to_limit_price: Option<bool>,
+    pub(crate) auto_cancel_date: Option<String>,
+    pub(crate) filled_quantity: Option<Decimal>,
+    pub(crate) ref_futures_con_id: Option<usize>,
+    pub(crate) auto_cancel_parent: Option<bool>,
+    pub(crate) shareholder: Option<String>,
+    pub(crate) imbalance_only: Option<bool>,
+    pub(crate) route_marketable_to_bbo: Option<bool>,
+    pub(crate) parent_perm_id: Option<usize>,
+    pub(crate) use_price_mgmt_algo: Option<UsePriceMgmtAlgo>
 }
 
 impl Order {
@@ -318,7 +323,7 @@ impl Order {
             ..Default::default()
         }
     }
-
+    /// Creates a simple market order.
     pub fn market(contract: Contract, action: Action, qty: Decimal) -> Self {
         let mut order = Order::new();
         order.action = Some(action);
@@ -326,7 +331,12 @@ impl Order {
         order.total_qty = Some(qty);
         order
     }
-
+    /// Sets the necessary parameters to submit a Combo order.
+    pub fn combo(mut self) -> Self {
+        self.smart_combo_routing_params = Some(vec![("NonGuaranteed".to_string(), "1".to_string())]);
+        self
+    }
+    /// Creates a market-on-close order. Only possible for stocks that trade on NYSE or NASDAQ.
     pub fn market_on_close(contract: Contract, action: Action, qty: Decimal) -> Self {
         let mut order = Order::new();
         order.action = Some(action);
@@ -335,7 +345,7 @@ impl Order {
         order.order_type = Some(OrderType::MarketOnClose);
         order
     }
-
+    /// Creates a relative market order.
     pub fn relative_market(contract: Contract, action: Action, qty: Decimal) -> Self {
         let mut order = Order::new();
         order.action = Some(action);
@@ -344,7 +354,7 @@ impl Order {
         order.order_type = Some(OrderType::RelativeMarket);
         order
     }
-
+    /// Creates a limit order.
     pub fn limit(contract: Contract, action: Action, qty: Decimal, lmt: Decimal, tif: TimeInForce) -> Self {
         let mut order = Order::new();
         order.action = Some(action);
@@ -570,7 +580,7 @@ impl Encodable for Order {
 }  
 
 #[derive(Default,Debug,Clone)]
-pub struct OrderState {
+pub(crate) struct OrderState {
     pub status: Option<String>,
     pub init_margin_before: Option<Decimal>,
     pub maint_margin_before: Option<Decimal>,
@@ -590,7 +600,7 @@ pub struct OrderState {
     pub completed_status: Option<String>,
 }
 #[derive(Default,Debug,Clone)]
-pub struct OrderStatus {
+pub(crate) struct OrderStatus {
     pub order_id: i32,
     pub status: Option<String>,
     pub filled: Option<Decimal>,
@@ -603,7 +613,7 @@ pub struct OrderStatus {
     pub why_held: Option<String>
 }
 #[derive(Debug,Clone)]
-pub struct Execution {
+pub(crate) struct Execution {
     pub exec_id: Option<String>,
     pub time: Option<String>,
     pub acct_number: Option<String>,
@@ -625,7 +635,7 @@ pub struct Execution {
     pub last_liquidity: Option<i32>
 }
 #[derive(Default,Debug,Clone)]
-pub struct CommissionReport {
+pub(crate) struct CommissionReport {
     pub exec_id: Option<String>,
     pub commission: Option<Decimal>,
     pub currency: Option<String>,

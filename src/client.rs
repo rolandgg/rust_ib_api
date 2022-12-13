@@ -1,7 +1,7 @@
 
-use crate::ib_contract::ContractDetails;
-use crate::ib_enums::*;
-use crate::ib_contract;
+use crate::contract::ContractDetails;
+use crate::enums::*;
+use crate::contract;
 //use crate::utils::ib_message;
 use crate::utils::ib_stream;
 use crate::utils::ib_stream::AsyncResult;
@@ -36,7 +36,7 @@ enum Request {
     ReqWithID{id: i32, sender: oneshot::Sender<Response>},
 }
 enum Response {
-    ContractDetails(Vec<ib_contract::ContractDetails>),
+    ContractDetails(Vec<contract::ContractDetails>),
     Order(order::OrderTracker),
     Ticker(ticker::Ticker),
     Bars(bars::BarSeries),
@@ -75,7 +75,7 @@ impl fmt::Display for SocketError {
         write!(f, "Socket connection to TWS/Gateway is dead.") // user-facing output
     }
 }
-
+/// The client is used to make requests and receive account updates.
 pub struct IBClient
 {
     client_id: i32,
@@ -150,6 +150,9 @@ impl IBClient
         }
         return false;
     }
+    /// Connects to the TWS/Gateway on the specified port and with the specified client ID. Make sure that the port agrees
+    /// with the one configured in the TWS/Gateway.
+    /// Returns a connected client if the connection was successful, otherwise returns an error.
     pub async fn connect(port: i32, client_id: i32, optional_capabilities: &str) -> AsyncResult<Self> {
 
         let mut addr = "127.0.0.1:".to_string();
@@ -519,15 +522,15 @@ impl IBClient
         
         Ok(client)
     }
-
+    /// Returns the current net liquidation value of the account. If no value was received yet, returns `None`.
     pub fn net_liquidation_value(&self) -> Option<Decimal> {
         *self.account.net_liquidation.borrow()
     }
-
+    /// Returns the current cash balance of the account. If no value was received yet, returns `None`.
     pub fn cash_balance(&self) -> Option<Decimal> {
         *self.account.cash_balance.borrow()
     }
-
+    /// Returns the excess liquidity of the account. If no value was received yet, returns `None`.
     pub fn excess_liquidity(&self) -> Option<Decimal> {
         *self.account.excess_liquidity.borrow()
     }
@@ -541,8 +544,8 @@ impl IBClient
         self.next_order_id += 1;
         self.next_order_id
     }
-
-    pub async fn req_contract_details(&mut self, contract: &ib_contract::Contract) -> AsyncResult<Vec<ib_contract::ContractDetails>> {
+    /// Requests contract details for the given `Contract`.
+    pub async fn req_contract_details(&mut self, contract: &contract::Contract) -> AsyncResult<Vec<contract::ContractDetails>> {
         if !self.is_connected() {
             return Err(Box::new(SocketError));
         }
@@ -565,7 +568,7 @@ impl IBClient
             Err(error) => Err(Box::new(error))
         }
     }
-
+    /// Places an order. An `OrderTracker` is returned which can be used to monitor the order execution.
     pub async fn place_order(&mut self, order: &order::Order) -> AsyncResult<order::OrderTracker> {
         if !self.is_connected() {
             return Err(Box::new(SocketError));
@@ -589,8 +592,8 @@ impl IBClient
             Err(error) => Err(Box::new(error))
         }
     }
-
-    pub async fn req_market_data(&mut self, contract: &ib_contract::Contract, snapshot: bool, regulatory: bool, 
+    /// Requests real-time or delayed market data. A `Ticker` is returned which will receive streaming market data.
+    pub async fn req_market_data(&mut self, contract: &contract::Contract, snapshot: bool, regulatory: bool, 
         additional_data: Option<Vec<GenericTickType>>) -> AsyncResult<ticker::Ticker> {
         if !self.is_connected() {
             return Err(Box::new(SocketError));
@@ -631,8 +634,8 @@ impl IBClient
             Err(err) => Err(Box::new(err))
         }
     }
-
-    pub async fn req_historical_data<Tz: TimeZone> (&mut self, contract: &ib_contract::Contract, end_date_time: &DateTime<Tz>, 
+    /// Requests historical price bar data.
+    pub async fn req_historical_data<Tz: TimeZone> (&mut self, contract: &contract::Contract, end_date_time: &DateTime<Tz>, 
         duration: HistoricalDataDuration, bar_period: HistoricalDataBarSize, what_to_show: HistoricalDataType, use_rth: bool) -> AsyncResult<bars::BarSeries>
         where
         <Tz as TimeZone>::Offset: std::fmt::Display
@@ -664,8 +667,8 @@ impl IBClient
             Err(err) => Err(Box::new(err))
         }
     }
-
-    pub async fn req_adj_historical_data(&mut self, contract: &ib_contract::Contract, duration: HistoricalDataDuration, bar_period: HistoricalDataBarSize, use_rth: bool) -> AsyncResult<bars::BarSeries> {
+    /// Requests historical price bar data adjusted for dividends and splits (stocks only).
+    pub async fn req_adj_historical_data(&mut self, contract: &contract::Contract, duration: HistoricalDataDuration, bar_period: HistoricalDataBarSize, use_rth: bool) -> AsyncResult<bars::BarSeries> {
         if !self.is_connected() {
             return Err(Box::new(SocketError));
         }
@@ -693,7 +696,7 @@ impl IBClient
             Err(err) => Err(Box::new(err))
         }
     }
-
+    /// Configures market data type as delayed data (no real-time subscription required).
     pub async fn set_mkt_data_delayed(&mut self) -> AsyncResult<()> {
         if !self.is_connected() {
             return Err(Box::new(SocketError));
@@ -705,7 +708,7 @@ impl IBClient
         self.mkt_data_setting = MarketDataType::Delayed;
         Ok(())
     }
-
+    /// Configures market data type as real-time (subscription required).
     pub async fn set_mkt_data_real_time(&mut self) -> AsyncResult<()> {
         if !self.is_connected() {
             return Err(Box::new(SocketError));
@@ -719,7 +722,7 @@ impl IBClient
     }
 
 }
-
+/// The `IBClient` shuts down all detached tasks used to manage the socket connection on `Drop`.
 impl Drop for IBClient {
     fn drop(&mut self) {
         self.keep_alive_abort_handle.abort();

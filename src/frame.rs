@@ -1,11 +1,11 @@
 use rust_decimal::prelude::*;
 use chrono::NaiveDateTime;
 use crate::account::Position;
-use crate::ib_contract;
+use crate::contract;
 use crate::utils::ib_message::decode;
 use crate::order;
 use crate::bars;
-use crate::ib_enums::*;
+use crate::enums::*;
 
 use enumset::EnumSetType;
 use enumset::EnumSet;
@@ -18,7 +18,7 @@ pub enum TickAttribute {
    PreOpen
 }
 
-pub enum IBFrame {
+pub(crate) enum IBFrame {
     AccountType(Option<String>),
     AccountCode(Option<String>),
     CashBalance(Option<Decimal>),
@@ -33,7 +33,7 @@ pub enum IBFrame {
     PortfolioValue(Position),
     CurrentTime(NaiveDateTime),
     ContractDetails{
-        req_id: i32, contract_details: ib_contract::ContractDetails
+        req_id: i32, contract_details: contract::ContractDetails
     },
     ContractDetailsEnd(i32),
     OrderID(i32),
@@ -86,7 +86,7 @@ impl IBFrame {
             Incoming::PortfolioValue => {
                 let version: Option<i32> = decode(&mut it);
                 let con_id = decode(&mut it);
-                let mut contract = ib_contract::Contract::default();
+                let mut contract = contract::Contract::default();
                 contract.con_id = con_id;
                 contract.symbol = decode(&mut it);
                 contract.sec_type = decode(&mut it);
@@ -128,7 +128,7 @@ impl IBFrame {
                     None => None,
                     Some(id) => {
                         let req_id = id;
-                        let mut contract = ib_contract::Contract {
+                        let mut contract = contract::Contract {
                             symbol : decode(&mut it),
                             sec_type: decode(&mut it),
                             last_trade_date_or_contract_month: decode(&mut it),
@@ -139,7 +139,7 @@ impl IBFrame {
                             local_symbol: decode(&mut it),
                             ..Default::default()
                         };
-                        let mut details = ib_contract::ContractDetails {
+                        let mut details = contract::ContractDetails {
                             market_name: decode(&mut it),
                             ..Default::default()
                         };
@@ -198,7 +198,7 @@ impl IBFrame {
             Incoming::OpenOrder => {
                 let order_id: i32 = decode(&mut it)?;
                 //decode contract
-                let contract = ib_contract::Contract {
+                let contract = contract::Contract {
                     con_id: decode(&mut it),
                     symbol: decode(&mut it),
                     sec_type: decode(&mut it),
@@ -288,7 +288,7 @@ impl IBFrame {
                 if let Some(n) = combo_legs_count {
                     let mut legs = Vec::with_capacity(n);
                     for i in 0..n {
-                        legs.push(ib_contract::ComboLeg {
+                        legs.push(contract::ComboLeg {
                             con_id: decode(&mut it),
                             ratio: decode(&mut it),
                             action: decode(&mut it),
@@ -343,7 +343,7 @@ impl IBFrame {
                 let has_delta_neutral_contract: Option<bool> = decode(&mut it);
                 if let Some(has_dnc) = has_delta_neutral_contract {
                     if has_dnc {
-                        order.contract.delta_neutral_contract = Some(ib_contract::DeltaNeutralContract{
+                        order.contract.delta_neutral_contract = Some(contract::DeltaNeutralContract{
                             con_id: decode(&mut it),
                             delta: decode(&mut it),
                             price: decode(&mut it)
@@ -444,7 +444,7 @@ impl IBFrame {
             Incoming::ExecutionData => {
                 it.next(); //skip version
                 let order_id: i32 = decode(&mut it)?;
-                let contract = ib_contract::Contract {
+                let contract = contract::Contract {
                     con_id: decode(&mut it),
                     symbol : decode(&mut it),
                     sec_type: decode(&mut it),

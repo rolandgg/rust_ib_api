@@ -1,12 +1,12 @@
 use tokio::sync::watch;
-use crate::ib_contract;
+use crate::contract;
 use rust_decimal::prelude::*;
 
 type Updating<T> = watch::Receiver<Option<T>>;
 type Sender<T> = watch::Sender<Option<T>>;
 #[derive(Debug)]
 pub struct Position {
-    pub contract: ib_contract::Contract,
+    pub contract: contract::Contract,
     pub position: Option<Decimal>,
     pub market_price: Option<Decimal>,
     pub market_value: Option<Decimal>,

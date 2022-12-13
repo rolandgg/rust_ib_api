@@ -2,6 +2,8 @@
 use rust_decimal::prelude::*;
 use tokio::sync::watch;
 
+
+/// Short availability as classified by the TWS API.
 #[derive(Clone)]
 pub enum ShortAvailability {
     Available, HardToBorrow, Unavailable
@@ -26,7 +28,8 @@ impl fmt::Display for ShortAvailability {
     }
 }
 
-
+/// The `Ticker` is returned after a successful request for market data and receives streaming market data for the
+/// requested contract.
 pub struct Ticker {
     bid: watch::Receiver<Option<f64>>,
     bid_size: watch::Receiver<Option<i32>>,
@@ -38,7 +41,7 @@ pub struct Ticker {
     short_availability: watch::Receiver<Option<ShortAvailability>>
 }
 
-pub struct TickerSender {
+pub(crate) struct TickerSender {
     pub bid: watch::Sender<Option<f64>>,
     pub bid_size: watch::Sender<Option<i32>>,
     pub ask: watch::Sender<Option<f64>>,
@@ -50,7 +53,7 @@ pub struct TickerSender {
 }
 
 impl Ticker {
-    pub fn new() -> (TickerSender, Ticker) {
+    pub(crate) fn new() -> (TickerSender, Ticker) {
         let (bid_tx, bid_rx) = watch::channel(None);
         let (bid_size_tx, bid_size_rx) = watch::channel(None);
         let (ask_tx, ask_rx) = watch::channel(None);
@@ -83,6 +86,7 @@ impl Ticker {
             }
         )
     }
+    /// Returns the latest midpoint price, if any.
     pub fn midpoint(&self) -> Option<f64> {
         if let Some(bid) = &*self.bid.borrow() {
             if let Some(ask) = &*self.ask.borrow() {
@@ -92,27 +96,27 @@ impl Ticker {
         }
         else {None}
     }
-
+    /// Returns the latest bid price if a bid was received.
     pub fn bid(&self) -> Option<f64> {
         self.bid.borrow().clone()
     }
-
+    /// Returns the latest ask price if an ask price was received.
     pub fn ask(&self) -> Option<f64> {
         self.ask.borrow().clone()
     }
-
+    /// Returns the latest bid size if received.
     pub fn bid_size(&self) -> Option<i32> {
         self.bid_size.borrow().clone()
     }
-
+    /// Returns the latest ask size if received.
     pub fn ask_size(&self) -> Option<i32> {
         self.ask_size.borrow().clone()
     }
-
+    /// Returns the number of shares available to sell short.
     pub fn shortable_shares(&self) -> Option<i32> {
         self.shortable_shares.borrow().clone()
     }
-
+    /// Returns the current short availability.
     pub fn short_availability(&self) -> Option<ShortAvailability> {
         self.short_availability.borrow().clone()
     }
