@@ -307,7 +307,12 @@ pub struct Order {
     pub(crate) imbalance_only: Option<bool>,
     pub(crate) route_marketable_to_bbo: Option<bool>,
     pub(crate) parent_perm_id: Option<usize>,
-    pub(crate) use_price_mgmt_algo: Option<UsePriceMgmtAlgo>
+    pub(crate) use_price_mgmt_algo: Option<UsePriceMgmtAlgo>,
+    pub(crate) duration: Option<i32>,
+    pub(crate) post_to_ats: Option<i32>,
+    pub(crate) advanced_error_override: Option<String>,
+    pub(crate) manual_order_time: Option<String>,
+    pub(crate) min_trade_qty: Option<i32>
 }
 
 impl Order {
@@ -468,6 +473,7 @@ impl Encodable for Order {
             code.push_str(&self.delta_neutral_clearing_intent.encode());
             code.push_str(&self.delta_neutral_open_close.encode());
             code.push_str(&self.delta_neutral_short_sale.encode());
+            code.push_str(&self.delta_neutral_short_sale_slot.encode());
             code.push_str(&self.delta_neutral_designated_location.encode());
         }
         code.push_str(&self.continuous_update.encode());
@@ -575,6 +581,14 @@ impl Encodable for Order {
         code.push_str(&self.is_oms_container.encode());
         code.push_str(&self.discretionary_up_to_limit_price.encode());
         code.push_str(&self.use_price_mgmt_algo.encode());
+        code.push_str(&self.duration.encode());
+        code.push_str(&self.post_to_ats.encode());
+        code.push_str(&self.auto_cancel_parent.encode());
+        code.push_str(&self.advanced_error_override.encode());
+        code.push_str(&self.manual_order_time.encode());
+        if &self.contract.exchange == &Some("IBKRATS".to_string()){
+            code.push_str(&self.min_trade_qty);
+        }
         code
     }
 }  

@@ -9,34 +9,34 @@ use rust_decimal::prelude::*;
 
 #[tokio::test]
 async fn connection() {
-    let mut client = match IBClient::connect(4002, 1, "").await {
+    let mut client = match IBClient::connect(4002, 1, "", None).await {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
-    time::sleep(time::Duration::from_secs(60)).await;
+    time::sleep(time::Duration::from_secs(10)).await;
 }
 
 #[tokio::test]
 async fn contract_details() {
-    let mut client = match IBClient::connect(4002, 1, "").await {
+    let mut client = match IBClient::connect(4002, 1, "", Some("foo.log")).await {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
-    let contract = Contract::stock("AAPL", "SMART", "USD");
+    let contract = Contract::stock("SPY", "ARCA", "USD");
     match client.req_contract_details(&contract).await {
         Ok(details) => for detail in &details {
             match &detail.contract() {
-                Some(contract) => assert_eq!(contract.symbol(), &Some("AAPL".to_string())),
-                None => panic!("No valid contract details returned for AAPL")
+                Some(contract) => assert_eq!(contract.symbol(), &Some("SPY".to_string())),
+                None => panic!("No valid contract details returned for SPY")
             }
         }
-        Err(_) => panic!("Error requesting contract details")
+        Err(err) => panic!("Error requesting contract details : {:?}", err)
     };
 }
 
 #[tokio::test]
 async fn liquid_hours() {
-    let mut client = match IBClient::connect(4002, 1, "").await {
+    let mut client = match IBClient::connect(4002, 1, "", None).await {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
@@ -51,7 +51,7 @@ async fn liquid_hours() {
 
 #[tokio::test]
 async fn place_market_order() {
-    let mut client = match IBClient::connect(4002, 2, "").await {
+    let mut client = match IBClient::connect(4002, 2, "", Some("boo.log")).await {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
@@ -68,7 +68,7 @@ async fn place_market_order() {
 
 #[tokio::test]
 async fn place_spread_market_order() {
-    let mut client = match IBClient::connect(4002, 1, "").await {
+    let mut client = match IBClient::connect(4002, 1, "", None).await {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
@@ -88,7 +88,7 @@ async fn place_spread_market_order() {
 
 #[tokio::test]
 async fn market_data() {
-    let mut client = match IBClient::connect(4002, 3, "").await {
+    let mut client = match IBClient::connect(4002, 3, "", None).await {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
@@ -105,7 +105,7 @@ async fn market_data() {
 
 #[tokio::test]
 async fn delayed_market_data() {
-    let mut client = match IBClient::connect(4002, 4, "").await {
+    let mut client = match IBClient::connect(4002, 4, "", None).await {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
@@ -124,7 +124,7 @@ async fn delayed_market_data() {
 
 #[tokio::test]
 async fn snapshot_data() {
-    let mut client = match IBClient::connect(4002, 3, "").await {
+    let mut client = match IBClient::connect(4002, 3, "", None).await {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };
@@ -142,7 +142,7 @@ async fn snapshot_data() {
 
 #[tokio::test]
 async fn historical_data() {
-    let mut client = match IBClient::connect(4002, 4, "").await {
+    let mut client = match IBClient::connect(4002, 4, "", None).await {
         Ok(client) => client,
         Err(_error) => panic!("Connection not successful!")
     };

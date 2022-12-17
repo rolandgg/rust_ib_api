@@ -6,6 +6,7 @@ use crate::utils::ib_message::decode;
 use crate::order;
 use crate::bars;
 use crate::enums::*;
+use log::debug;
 
 use enumset::EnumSetType;
 use enumset::EnumSet;
@@ -123,7 +124,6 @@ impl IBFrame {
                 else {None}
             },
             Incoming::ContractData => {
-                it.next(); //skip version
                 match decode(&mut it) {
                     None => None,
                     Some(id) => {
@@ -146,7 +146,7 @@ impl IBFrame {
                         contract.trading_class = decode(&mut it);
                         contract.con_id = decode(&mut it);
                         details.min_tick = decode(&mut it);
-                        details.md_size_multiplier = decode(&mut it);
+                        //details.md_size_multiplier = decode(&mut it);
                         contract.multiplier = decode(&mut it);
                         details.order_types = decode(&mut it);
                         details.valid_exchanges = decode(&mut it);
@@ -179,6 +179,10 @@ impl IBFrame {
                         details.under_sec_type = decode(&mut it);
                         details.market_rule_ids = decode(&mut it);
                         details.real_expiration_date = decode(&mut it);
+                        details.stock_type = decode(&mut it);
+                        details.min_size = decode(&mut it);
+                        details.size_increment = decode(&mut it);
+                        details.suggested_size_increment = decode(&mut it);
                         details.contract = Some(contract);
                         Some(IBFrame::ContractDetails{
                             req_id,
@@ -232,6 +236,8 @@ impl IBFrame {
                     hidden: decode(&mut it),
                     discretionary_amt: decode(&mut it),
                     good_after_time: decode(&mut it),
+                    //skip shares allocation
+
                     fa_group: {it.next(); decode(&mut it)},
                     fa_method: decode(&mut it),
                     fa_percentage: decode(&mut it),
@@ -256,10 +262,10 @@ impl IBFrame {
                     all_or_none: decode(&mut it),
                     min_qty: decode(&mut it),
                     oca_type: decode(&mut it),
-                    e_trade_only: decode(&mut it),
-                    firm_quote_only: decode(&mut it),
-                    nbbo_price_cap: decode(&mut it),
-                    parent_id: decode(&mut it),
+                    //e_trade_only: decode(&mut it),
+                    //firm_quote_only: decode(&mut it),
+                    //nbbo_price_cap: decode(&mut it),
+                    parent_id: {it.next(); it.next(); it.next(); decode(&mut it)},
                     trigger_method: decode(&mut it),
                     volatility: decode(&mut it),
                     volatility_type: decode(&mut it),
@@ -504,7 +510,7 @@ impl IBFrame {
                 let mask: Option<u32> = decode(&mut it);
                 let attributes = match mask {
                     Some(m) => {
-                        let bits = BitSlice::<Lsb0, _>::from_element(&m);
+                        let bits = m.view_bits::<Lsb0>();
                         let mut attributes = EnumSet::new();
                         if bits[0] == true {attributes.insert(TickAttribute::CanAutoExecute);}
                         if bits[1] == true {attributes.insert(TickAttribute::PastLimit);}

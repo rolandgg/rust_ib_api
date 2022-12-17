@@ -30,6 +30,16 @@ use tokio::sync::watch;
 use crossbeam::channel::{self};
 //use std::sync::atomic::{AtomicUsize,AtomicI32};
 use futures::future::{Abortable, AbortHandle};
+use log::{debug, error, info, trace, warn, LevelFilter, SetLoggerError};
+    use log4rs::{
+        append::{
+            console::{ConsoleAppender, Target},
+            file::FileAppender,
+        },
+        config::{Appender, Config, Root},
+        encode::pattern::PatternEncoder,
+        filter::threshold::ThresholdFilter,
+};
 
 enum Request {
     OrderID(oneshot::Sender<i32>),
@@ -90,13 +100,57 @@ pub struct IBClient
     account: account::AccountReceiver,
     next_req_id: i32,
     next_order_id: i32,
-    mkt_data_setting: MarketDataType
+    mkt_data_setting: MarketDataType,
+    log_handle: log4rs::Handle
 }
 
 impl IBClient
 {
+    fn init_logging(file_path: Option<&str>) -> Result<log4rs::Handle,Box<dyn Error>> {
+        let level = log::LevelFilter::Info;
+    
+        // Build a stderr logger.
+        let stderr = ConsoleAppender::builder().target(Target::Stderr).build();
+    
+        // Logging to log file.
+        if let Some(fp) = file_path {
+            let logfile = FileAppender::builder()
+            // Pattern: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
+            .encoder(Box::new(PatternEncoder::new("{d} - {l} - {m}\n")))
+            .build(fp)?;
+            let config = Config::builder()
+            .appender(Appender::builder().build("logfile", Box::new(logfile)))
+            .appender(
+                Appender::builder()
+                    .filter(Box::new(ThresholdFilter::new(level)))
+                    .build("stderr", Box::new(stderr)),
+            )
+            .build(
+                Root::builder()
+                    .appender("logfile")
+                    .appender("stderr")
+                    .build(LevelFilter::Trace),
+            )?;
+            Ok(log4rs::init_config(config)?)
+        } else {
+            let config = Config::builder()
+            .appender(
+                Appender::builder()
+                    .filter(Box::new(ThresholdFilter::new(level)))
+                    .build("stderr", Box::new(stderr)),
+            )
+            .build(
+                Root::builder()
+                    .appender("stderr")
+                    .build(LevelFilter::Trace),
+            )?;
+            Ok(log4rs::init_config(config)?)
+        }
+    }
+
     async fn connect_socket(writer: &mut ib_stream::IBWriter, reader: &mut ib_stream::IBReader) -> AsyncResult<i32> {
         //initiate handshake
+        info!("Initialize handshake.");
         writer.write_raw(b"API\0").await?;
         let mut valid_versions = constants::MIN_CLIENT_VER.to_string();
         valid_versions.push_str("..");
@@ -112,12 +166,13 @@ impl IBClient
             let fields: Vec<&str> = msg.split("\0").collect();
             if fields.len() == 3 {
                 match fields[0].parse() {
-                    Ok(v) => return Ok(v),
+                    Ok(v) => {info!("Handshake successful! Server version: {v}"); return Ok(v)},
                     Err(_) => return Err(Box::new(HandShakeError))
                 }
             }
             reads -= 1;
             if reads <= 0 {
+                error!("More than 10 messages read without handshake response.");
                 return Err(Box::new(HandShakeError));
             }
         }
@@ -131,6 +186,7 @@ impl IBClient
         msg.push_str(&version.encode());
         msg.push_str(&client_id.encode());
         msg.push_str(&optional_capabilities.to_string().encode());
+        info!("Sending start API message.");
         writer.write(&msg).await?;
         Ok(())
     }
@@ -153,8 +209,9 @@ impl IBClient
     /// Connects to the TWS/Gateway on the specified port and with the specified client ID. Make sure that the port agrees
     /// with the one configured in the TWS/Gateway.
     /// Returns a connected client if the connection was successful, otherwise returns an error.
-    pub async fn connect(port: i32, client_id: i32, optional_capabilities: &str) -> AsyncResult<Self> {
-
+    pub async fn connect(port: i32, client_id: i32, optional_capabilities: &str, log_file: Option<&str>) -> AsyncResult<Self> {
+        
+        let log_handle = IBClient::init_logging(log_file)?;
         let mut addr = "127.0.0.1:".to_string();
         addr.push_str(&port.to_string());
         let stream = TcpStream::connect(addr).await?;
@@ -202,11 +259,12 @@ impl IBClient
                         //on reader error, the socket is either disconnected or the message head could not
                         //be parsed, which is also non-recoverable -> signal closure of the reader and shut
                         //down the task
+                        error!("Socket read half disconnected, shutting down reader.");
                         let _ = reader_state_tx.send(Some(TaskState::Dead));
                         return;
                     }
                 }
-                println!("{}",String::from_utf8_lossy(&msg));
+                info!("Received message: {}",String::from_utf8_lossy(&msg));
                 loop {
                     match req_rx.try_recv() {
                         Ok(req) => match req {
@@ -218,7 +276,6 @@ impl IBClient
                         Err(_) => break
                     }
                 };
-                //println!("{:?}", String::from_utf8_lossy(&msg));
                 
                 if let Some(frame) = IBFrame::parse(&msg) {
                     match frame {
@@ -457,9 +514,9 @@ impl IBClient
                         IBFrame::Error{id, code, msg} => {
     
                         }
-                        _ => ()
+                        _ => warn!("Message ignored by client because not currently implemented.")
                     };
-                }
+                } else {warn!("Message could not be parsed and is ignored!");}
                 
             }
         }, reader_abort_registration);
@@ -477,7 +534,7 @@ impl IBClient
                 match rx.recv().await {
                     Some(msg) => match writer.write(&msg).await {
                         Err(_) => {let _ = writer_state_tx.send(Some(TaskState::Dead)); return;}
-                        _ => ()
+                        _ => info!("Message send: {msg}")
                     },
                     None => {let _ = writer_state_tx.send(Some(TaskState::Dead)); return;}
                 }
@@ -511,7 +568,8 @@ impl IBClient
             account,
             next_req_id: 0,
             next_order_id,
-            mkt_data_setting: MarketDataType::RealTime
+            mkt_data_setting: MarketDataType::RealTime,
+            log_handle
         };
         //subscribe to account updates
         let mut msg = Outgoing::ReqAcctData.encode();

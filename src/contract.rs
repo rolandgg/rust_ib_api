@@ -48,6 +48,7 @@ pub struct Contract {
     pub(crate) include_expired: Option<bool>,
     pub(crate) sec_id_type: Option<enums::SecIdType>,
     pub(crate) sec_id: Option<String>,
+    pub(crate) issuer_id: Option<String>,
     pub(crate) combo_legs_description: Option<String>,
     pub(crate) combo_legs: Option<Vec<ComboLeg>>,
     pub(crate) delta_neutral_contract: Option<DeltaNeutralContract>,
@@ -71,6 +72,7 @@ impl Encodable for Contract {
         code.push_str(&self.include_expired.encode());
         code.push_str(&self.sec_id_type.encode());
         code.push_str(&self.sec_id.encode());
+        code.push_str(&self.issuer_id.encode());
         code
     }
 }
@@ -233,6 +235,9 @@ pub struct ContractDetails {
     pub(crate) next_option_date: Option<bool>,
     pub(crate) next_option_type: Option<bool>,
     pub(crate) notes: Option<String>,
+    pub(crate) min_size: Option<String>,
+    pub(crate) size_increment: Option<String>,
+    pub(crate) suggested_size_increment: Option<String>
 }
 ///Returns the liquid hours (i.e. trading calendar) of the contract.
 impl ContractDetails {
