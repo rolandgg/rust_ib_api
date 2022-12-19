@@ -429,7 +429,16 @@ impl IBFrame {
                 order.dont_use_auto_price_for_hedge = decode(&mut it);
                 order.is_oms_container = decode(&mut it);
                 order.discretionary_up_to_limit_price = decode(&mut it);
-                order.use_price_mgmt_algo = decode(&mut it);                
+                order.use_price_mgmt_algo = decode(&mut it); 
+                order.duration = decode(&mut it);
+                order.post_to_ats = decode(&mut it);
+                order.auto_cancel_parent = decode(&mut it);
+                order.min_trade_qty = decode(&mut it);
+                order.min_compete_size = decode(&mut it);
+                order.compete_against_best_offset = decode(&mut it);
+                order.mid_offset_at_whole = decode(&mut it);
+                order.mid_offset_at_half = decode(&mut it);
+
                 Some(IBFrame::OpenOrder{
                     order, order_state
                 })
@@ -497,7 +506,8 @@ impl IBFrame {
                     parent_id: decode(&mut it),
                     last_fill_price: decode(&mut it),
                     client_id: decode(&mut it),
-                    why_held: decode(&mut it)
+                    why_held: decode(&mut it),
+                    mkt_cap_price: decode(&mut it)
                 }))
             },
             Incoming::TickPrice => {

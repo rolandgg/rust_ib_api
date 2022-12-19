@@ -1,4 +1,5 @@
 use crate::enums::*;
+use crate::enums::constants::COMPETE_AGAINST_BEST_OFFSET_UP_TO_MID;
 use rust_decimal::prelude::*;
 use crate::utils::ib_message::Encodable;
 use crate::contract::Contract;
@@ -312,7 +313,11 @@ pub struct Order {
     pub(crate) post_to_ats: Option<i32>,
     pub(crate) advanced_error_override: Option<String>,
     pub(crate) manual_order_time: Option<String>,
-    pub(crate) min_trade_qty: Option<i32>
+    pub(crate) min_trade_qty: Option<i32>,
+    pub(crate) min_compete_size: Option<i32>,
+    pub(crate) compete_against_best_offset: Option<f64>,
+    pub(crate) mid_offset_at_whole: Option<f64>,
+    pub(crate) mid_offset_at_half: Option<f64>
 }
 
 impl Order {
@@ -322,8 +327,8 @@ impl Order {
             open_close: Some(OrderOpenClose::Open),
             origin: Some(Origin::Customer),
             exempt_code: Some(-1),
-            e_trade_only: Some(true),
-            firm_quote_only: Some(true),
+            e_trade_only: Some(false), //not supported anymore
+            firm_quote_only: Some(false), //not supported anymore
             auction_strategy: Some(AuctionStrategy::NoAuctionStrategy),
             ..Default::default()
         }
@@ -333,6 +338,7 @@ impl Order {
         let mut order = Order::new();
         order.action = Some(action);
         order.contract = contract;
+        order.order_type = Some(OrderType::Market);
         order.total_qty = Some(qty);
         order
     }
@@ -586,8 +592,23 @@ impl Encodable for Order {
         code.push_str(&self.auto_cancel_parent.encode());
         code.push_str(&self.advanced_error_override.encode());
         code.push_str(&self.manual_order_time.encode());
-        if &self.contract.exchange == &Some("IBKRATS".to_string()){
-            code.push_str(&self.min_trade_qty);
+        if &self.contract.exchange == &Some("IBKRATS".to_string()) {
+            code.push_str(&self.min_trade_qty.encode())
+        }
+        let mut send_mid_offsets = false;
+        if &self.order_type == &Some(OrderType::PeggedToBest) {
+            code.push_str(&self.min_compete_size.encode());
+            code.push_str(&self.compete_against_best_offset.encode());
+            if &self.compete_against_best_offset == &Some(COMPETE_AGAINST_BEST_OFFSET_UP_TO_MID) {
+                send_mid_offsets = true;
+            }
+        }
+        else if &self.order_type == &Some(OrderType::PeggedToMidpoint) {
+            send_mid_offsets = true;
+        }
+        if (send_mid_offsets) {
+            code.push_str(&self.mid_offset_at_whole.encode());
+            code.push_str(&self.mid_offset_at_half.encode());
         }
         code
     }
@@ -624,7 +645,8 @@ pub(crate) struct OrderStatus {
     pub parent_id: Option<usize>,
     pub last_fill_price: Option<Decimal>,
     pub client_id:  Option<usize>,
-    pub why_held: Option<String>
+    pub why_held: Option<String>,
+    pub mkt_cap_price: Option<f64>
 }
 #[derive(Debug,Clone)]
 pub(crate) struct Execution {

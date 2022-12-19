@@ -6,11 +6,12 @@ use crate::utils::ib_message::Decodable;
 
 use enum_ordinalize;
 
-pub mod constants {
-    pub const CLIENT_VERSION: i32 = 66;
-    pub const MIN_SERVER_VER_PRICE_MGMT_ALGO: i32 = 151;
-    pub const MIN_CLIENT_VER: i32 = 100;
-    pub const MAX_CLIENT_VER: i32 = MIN_SERVER_VER_PRICE_MGMT_ALGO;
+pub(crate) mod constants {
+    pub(crate) const CLIENT_VERSION: i32 = 66;
+    pub(crate) const MIN_SERVER_VER_PRICE_MGMT_ALGO: i32 = 151;
+    pub(crate) const MIN_CLIENT_VER: i32 = 100;
+    pub(crate) const MAX_CLIENT_VER: i32 = MIN_SERVER_VER_PRICE_MGMT_ALGO;
+    pub(crate) const COMPETE_AGAINST_BEST_OFFSET_UP_TO_MID: f64 = f64::INFINITY;
 }
 
 #[derive(FromPrimitive)]
@@ -661,6 +662,7 @@ pub enum OrderType {
     RelativeMarket,
     Volatility,
     PeggedToBenchmark,
+    PeggedToBest
 }
 
 impl Encodable for OrderType {
@@ -691,6 +693,7 @@ impl Encodable for OrderType {
             OrderType::RelativeMarket => "Rel + MKT\0",
             OrderType::Volatility => "VOL\0",
             OrderType::PeggedToBenchmark => "PEG BENCH\0",
+            OrderType::PeggedToBest => "PEG BEST\0"
         }.to_string()
     }
 }
@@ -724,6 +727,7 @@ impl FromStr for OrderType {
             "REL + MKT" => Ok(OrderType::RelativeMarket),
             "VOL" => Ok(OrderType::Volatility),
             "PEG BENCH" => Ok(OrderType::PeggedToBenchmark),
+            "PEG BEST" => Ok(OrderType::PeggedToBest),
             &_ => Err(ParseEnumError)
         }
     }
