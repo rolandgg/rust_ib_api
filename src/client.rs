@@ -229,6 +229,18 @@ impl IBClient
         }
         return false;
     }
+    async fn make_request(&mut self, id: i32, msg: String) -> AsyncResult<(Response)> {
+        let (resp_tx, resp_rx) = oneshot::channel();
+        self.req_tx.send(Request::ReqWithID{id, sender: resp_tx})?;
+        self.write_tx.send(msg).await?;
+        match resp_rx.await {
+            Ok(response) => 
+            {
+                Ok(response)
+            },
+            Err(err) => Err(Box::new(err))
+        }
+    }
     /// Connects to the TWS/Gateway on the specified port and with the specified client ID. Make sure that the port agrees
     /// with the one configured in the TWS/Gateway.
     /// Returns a connected client if the connection was successful, otherwise returns an error.
@@ -641,19 +653,10 @@ impl IBClient
         let id = self.get_next_req_id();
         msg.push_str(&id.encode());
         msg.push_str(&contract.encode());
-        let (rep_tx, rep_rx) = oneshot::channel();
-        self.req_tx.send(Request::ReqWithID{id, sender: rep_tx})?;
-        self.write_tx.send(msg).await?;
-        match rep_rx.await {
-            Ok(response) => 
-            {
-                match response {
-                    Response::ContractDetails(contracts) => Ok(contracts),
-                    Response::TWSError(error) => Err(Box::new(error)),
-                    _ => Err(Box::new(ResponseError{}))
-                }
-            },
-            Err(error) => Err(Box::new(error))
+        match self.make_request(id, msg).await? {
+            Response::ContractDetails(contracts) => Ok(contracts),
+            Response::TWSError(error) => Err(Box::new(error)),
+            _ => Err(Box::new(ResponseError{}))
         }
     }
     /// Places an order. An `OrderTracker` is returned which can be used to monitor the order execution.
@@ -665,20 +668,10 @@ impl IBClient
         let id = self.get_next_order_id();
         msg.push_str(&id.encode());
         msg.push_str(&order.encode());
-        let (rep_tx, rep_rx) = oneshot::channel();
-        self.req_tx.send(Request::ReqWithID{id, sender: rep_tx})?;
-        println!("{:?}", msg);
-        self.write_tx.send(msg).await?;
-        match rep_rx.await {
-            Ok(response) => 
-            {
-                match response {
-                    Response::Order(tracker) => Ok(tracker),
-                    Response::TWSError(error) => Err(Box::new(error)),
-                    _ => Err(Box::new(ResponseError{}))
-                }
-            },
-            Err(error) => Err(Box::new(error))
+        match self.make_request(id, msg).await? {
+            Response::Order(tracker) => Ok(tracker),
+            Response::TWSError(error) => Err(Box::new(error)),
+            _ => Err(Box::new(ResponseError{}))
         }
     }
     /// Requests real-time or delayed market data. A `Ticker` is returned which will receive streaming market data.
@@ -707,20 +700,10 @@ impl IBClient
         msg.push_str(&snapshot.encode());
         msg.push_str(&regulatory.encode());
         msg.push_str("\0"); //market data options
-        println!("{:?}", msg);
-        let (req_tx, req_rx) = oneshot::channel();
-        self.req_tx.send(Request::ReqWithID{id, sender: req_tx})?;
-        self.write_tx.send(msg).await?;
-        match req_rx.await {
-            Ok(response) => 
-            {
-                match response {
-                    Response::Ticker(ticker) => Ok(ticker),
-                    Response::TWSError(error) => Err(Box::new(error)),
-                    _ => Err(Box::new(ResponseError{}))
-                }
-            },
-            Err(err) => Err(Box::new(err))
+        match self.make_request(id, msg).await? {
+            Response::Ticker(ticker) => Ok(ticker),
+            Response::TWSError(error) => Err(Box::new(error)),
+            _ => Err(Box::new(ResponseError{}))
         }
     }
     /// Requests historical price bar data.
@@ -742,19 +725,10 @@ impl IBClient
         msg.push_str(&use_rth.encode());
         msg.push_str(&what_to_show.encode());
         msg.push_str("1\00\0\0");
-        let (resp_tx, resp_rx) = oneshot::channel();
-        self.req_tx.send(Request::ReqWithID{id, sender: resp_tx})?;
-        self.write_tx.send(msg).await?;
-        match resp_rx.await {
-            Ok(response) => 
-            {
-                match response {
-                    Response::Bars(bars) => Ok(bars),
-                    Response::TWSError(error) => Err(Box::new(error)),
-                    _ => Err(Box::new(ResponseError{}))
-                }
-            },
-            Err(err) => Err(Box::new(err))
+        match self.make_request(id, msg).await? {
+            Response::Bars(bars) => Ok(bars),
+            Response::TWSError(error) => Err(Box::new(error)),
+            _ => Err(Box::new(ResponseError{}))
         }
     }
     /// Requests historical price bar data adjusted for dividends and splits (stocks only).
@@ -772,19 +746,10 @@ impl IBClient
         msg.push_str(&use_rth.encode());
         msg.push_str("ADJUSTED_LAST\0");
         msg.push_str("1\00\0\0");
-        let (resp_tx, resp_rx) = oneshot::channel();
-        self.req_tx.send(Request::ReqWithID{id, sender: resp_tx})?;
-        self.write_tx.send(msg).await?;
-        match resp_rx.await {
-            Ok(response) => 
-            {
-                match response {
-                    Response::Bars(bars) => Ok(bars),
-                    Response::TWSError(error) => Err(Box::new(error)),
-                    _ => Err(Box::new(ResponseError{}))
-                }
-            },
-            Err(err) => Err(Box::new(err))
+        match self.make_request(id, msg).await? {
+            Response::Bars(bars) => Ok(bars),
+            Response::TWSError(error) => Err(Box::new(error)),
+            _ => Err(Box::new(ResponseError{}))
         }
     }
     /// Configures market data type as delayed data (no real-time subscription required).
@@ -810,6 +775,25 @@ impl IBClient
         self.write_tx.send(msg).await?;
         self.mkt_data_setting = MarketDataType::RealTime;
         Ok(())
+    }
+
+    pub async fn req_options_metadata(&mut self, contract: &contract::Contract, exchange: Option<&str>) ->AsyncResult<()> {
+        if !self.is_connected() {
+            return Err(Box::new(SocketError));
+        }
+        
+        if contract.symbol.is_some() && contract.sec_type.is_some() && contract.con_id.is_some() {
+            let mut msg = Outgoing::ReqSecDefOptParams.encode();
+            let id = self.get_next_req_id();
+            msg.push_str(&id.encode());
+            msg.push_str(&contract.symbol.encode());
+            msg.push_str(&exchange.encode());
+            msg.push_str(&contract.con_id.encode());
+            match self.make_request(id, msg).await? {
+                _ => Err(Box::new(ResponseError{}))
+            }
+        }
+        else {Ok(())}
     }
 
 }
