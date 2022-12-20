@@ -692,7 +692,6 @@ impl IBClient
         let id = self.get_next_req_id();
         msg.push_str(&id.encode());
         msg.push_str(&contract.encode_for_ticker());
-        msg.push_str("0\0");
         
         if let Some(add_data) = additional_data {
             for i in 0..add_data.len()-1 {
@@ -707,7 +706,7 @@ impl IBClient
         msg.push_str("\0"); //generic tick data
         msg.push_str(&snapshot.encode());
         msg.push_str(&regulatory.encode());
-        msg.push_str("\0");
+        msg.push_str("\0"); //market data options
         println!("{:?}", msg);
         let (req_tx, req_rx) = oneshot::channel();
         self.req_tx.send(Request::ReqWithID{id, sender: req_tx})?;

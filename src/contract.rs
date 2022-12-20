@@ -111,6 +111,32 @@ impl Contract {
         code.push_str(&self.currency.encode());
         code.push_str(&self.local_symbol.encode());
         code.push_str(&self.trading_class.encode());
+        match &self.sec_type {
+            Some(SecType::Combo) => {
+                match &self.combo_legs {
+                    Some(legs) => {
+                        code.push_str(&legs.len().encode());
+                        for leg in legs {
+                            code.push_str(&leg.con_id.encode());
+                            code.push_str(&leg.ratio.encode());
+                            code.push_str(&leg.action.encode());
+                            code.push_str(&leg.exchange.encode());
+                        };
+                    },
+                    None => code.push_str("0\0"),
+                }
+            },
+            _ => ()
+        }
+        if let Some(delta_n_contract) = &self.delta_neutral_contract {
+            code.push_str(&true.encode());
+            code.push_str(&delta_n_contract.con_id.encode());
+            code.push_str(&delta_n_contract.delta.encode());
+            code.push_str(&delta_n_contract.price.encode());
+        }
+        else {
+            code.push_str(&false.encode());
+        } 
         code
     }
 
