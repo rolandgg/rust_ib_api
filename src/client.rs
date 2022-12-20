@@ -50,6 +50,7 @@ enum Response {
     Order(order::OrderTracker),
     Ticker(ticker::Ticker),
     Bars(bars::BarSeries),
+    TWSError(TWSError),
     Empty
 }
 
@@ -65,9 +66,31 @@ impl Error for ResponseError {}
 
 impl fmt::Display for ResponseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Invalid response type!") // user-facing output
+        write!(f, "Invalid response!") // user-facing output
     }
 }
+
+#[derive(Debug)]
+struct TWSError {
+    code: Option<i32>,
+    message: Option<String>
+}
+
+impl Error for TWSError {}
+
+impl fmt::Display for TWSError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "TWS Error code: {}, message: {}", &self.code.unwrap_or(-1), &self.message.as_ref().unwrap_or(&String::from("")))
+    }
+}
+
+impl TWSError {
+    fn new(code: Option<i32>, message: Option<String>) -> TWSError {
+        TWSError {code, message}
+    }
+}
+
+
 #[derive(Debug)]
 struct HandShakeError;
 
@@ -512,7 +535,13 @@ impl IBClient
                             }
                         }
                         IBFrame::Error{id, code, msg} => {
-    
+                            if let Some(idval) = id {
+                                match requests.remove_entry(&idval) {
+                                    Some((_, tx)) => {let _ = tx.send(Response::TWSError(TWSError::new(code,msg)));},
+                                    None => ()
+                                };
+                            };
+                            
                         }
                         _ => warn!("Message ignored by client because not currently implemented.")
                     };
@@ -620,6 +649,7 @@ impl IBClient
             {
                 match response {
                     Response::ContractDetails(contracts) => Ok(contracts),
+                    Response::TWSError(error) => Err(Box::new(error)),
                     _ => Err(Box::new(ResponseError{}))
                 }
             },
@@ -644,6 +674,7 @@ impl IBClient
             {
                 match response {
                     Response::Order(tracker) => Ok(tracker),
+                    Response::TWSError(error) => Err(Box::new(error)),
                     _ => Err(Box::new(ResponseError{}))
                 }
             },
@@ -686,6 +717,7 @@ impl IBClient
             {
                 match response {
                     Response::Ticker(ticker) => Ok(ticker),
+                    Response::TWSError(error) => Err(Box::new(error)),
                     _ => Err(Box::new(ResponseError{}))
                 }
             },
@@ -719,6 +751,7 @@ impl IBClient
             {
                 match response {
                     Response::Bars(bars) => Ok(bars),
+                    Response::TWSError(error) => Err(Box::new(error)),
                     _ => Err(Box::new(ResponseError{}))
                 }
             },
@@ -748,6 +781,7 @@ impl IBClient
             {
                 match response {
                     Response::Bars(bars) => Ok(bars),
+                    Response::TWSError(error) => Err(Box::new(error)),
                     _ => Err(Box::new(ResponseError{}))
                 }
             },
