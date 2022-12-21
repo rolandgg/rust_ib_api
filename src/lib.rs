@@ -40,6 +40,7 @@
 //! assert_eq!(tracker.status(), Some("Filled".to_string()));
 //! ```
 pub mod enums;
+pub mod opt_params;
 mod utils;
 pub mod client;
 mod account;

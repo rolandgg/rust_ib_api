@@ -10,6 +10,7 @@ use crate::account;
 use crate::order;
 use crate::ticker;
 use crate::bars;
+use crate::opt_params;
 use crate::frame::IBFrame;
 
 use std::collections::HashMap;
@@ -50,6 +51,7 @@ enum Response {
     Order(order::OrderTracker),
     Ticker(ticker::Ticker),
     Bars(bars::BarSeries),
+    OptParams(opt_params::OptParams),
     TWSError(TWSError),
     Empty
 }
@@ -229,6 +231,7 @@ impl IBClient
         }
         return false;
     }
+
     async fn make_request(&mut self, id: i32, msg: String) -> AsyncResult<(Response)> {
         let (resp_tx, resp_rx) = oneshot::channel();
         self.req_tx.send(Request::ReqWithID{id, sender: resp_tx})?;
