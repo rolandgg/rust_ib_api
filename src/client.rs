@@ -548,6 +548,11 @@ impl IBClient
                             if let Some((_, req)) = requests.remove_entry(&id) {
                                 let _ = req.send(Response::Bars(data));
                             }
+                        },
+                        IBFrame::OptParams{id, data} => {
+                            if let Some((_, req)) = requests.remove_entry(&id) {
+                                let _ = req.send(Response::OptParams(data));
+                            }
                         }
                         IBFrame::Error{id, code, msg} => {
                             if let Some(idval) = id {
@@ -780,7 +785,8 @@ impl IBClient
         Ok(())
     }
 
-    pub async fn req_options_metadata(&mut self, contract: &contract::Contract, exchange: Option<&str>) ->AsyncResult<()> {
+    pub async fn req_options_metadata(&mut self, contract: &contract::Contract,
+                                      exchange: Option<&str>) ->AsyncResult<opt_params::OptParams> {
         if !self.is_connected() {
             return Err(Box::new(SocketError));
         }
@@ -791,12 +797,15 @@ impl IBClient
             msg.push_str(&id.encode());
             msg.push_str(&contract.symbol.encode());
             msg.push_str(&exchange.encode());
+            msg.push_str(&contract.sec_type.encode());
             msg.push_str(&contract.con_id.encode());
             match self.make_request(id, msg).await? {
+                Response::OptParams(params) => Ok(params),
+                Response::TWSError(error) => Err(Box::new(error)),
                 _ => Err(Box::new(ResponseError{}))
             }
         }
-        else {Ok(())}
+        else {Err(Box::new(ResponseError{}))}
     }
 
 }

@@ -1,7 +1,8 @@
+use std::collections::HashSet;
 use rust_decimal::prelude::*;
 use chrono::NaiveDateTime;
 use crate::account::Position;
-use crate::contract;
+use crate::{contract, opt_params};
 use crate::utils::ib_message::decode;
 use crate::order;
 use crate::bars;
@@ -49,6 +50,7 @@ pub(crate) enum IBFrame {
     StringTick{id: i32, kind: TickType, val: Option<String>},
     GenericTick{id: i32, kind: TickType, val: f64},
     Bars{id: i32, data: bars::BarSeries},
+    OptParams{id: i32, data: opt_params::OptParams},
     Error{id: Option<i32>, code: Option<i32>, msg: Option<String>},
     NotImplemented
 }
@@ -585,6 +587,40 @@ impl IBFrame {
                         Some(bar_data)} else {None}
                 } else {None};
                 Some(IBFrame::Bars{id, data: bars::BarSeries{start_dt, end_dt, n_bars, data}})
+            }
+            Incoming::SecurityDefinitionOptionParameter => {
+                let id: i32 = decode(&mut it)?;
+                let exchange = decode(&mut it);
+                let underlying_con_id = decode(&mut it);
+                let trading_class = decode(&mut it);
+                let multiplier = decode(&mut it);
+                let expirations_size = decode(&mut it)?;
+                let mut expirations = HashSet::new();
+                for i in 0..expirations_size {
+                    let expiration = decode(&mut it);
+                    if let Some(expir_val) = expiration {
+                        expirations.insert(expir_val);
+                    }
+                }
+                let strikes_size = decode(&mut it)?;
+                let mut strikes = HashSet::new();
+                for i in 0..strikes_size {
+                    let strike = decode(&mut it);
+                    if let Some(strike_val) = strike {
+                        strikes.insert(strike_val);
+                    }
+                }
+                Some(IBFrame::OptParams {
+                    id,
+                    data: opt_params::OptParams {
+                        underlying_con_id,
+                        exchange,
+                        trading_class,
+                        multiplier,
+                        strikes,
+                        expirations
+                    }
+                })
             }
             Incoming::ErrMsg => {
                 it.next(); //skip version

@@ -35,6 +35,29 @@ async fn contract_details() {
 }
 
 #[tokio::test]
+async fn opt_params() {
+    let mut client = match IBClient::connect(4002, 1, "", Some("foo.log")).await {
+        Ok(client) => client,
+        Err(_error) => panic!("Connection not successful!")
+    };
+    let contract = Contract::stock("SPY", "ARCA", "USD");
+    match client.req_contract_details(&contract).await {
+        Ok(details) => for detail in &details {
+            match &detail.contract() {
+                Some(contract) => {
+                    match client.req_options_metadata(&contract, None).await {
+                        Ok(params) => (),
+                        _ => ()
+                    }
+                },
+                None => panic!("No valid contract details returned for SPY")
+            }
+        }
+        Err(err) => panic!("Error requesting contract details : {:?}", err)
+    };
+}
+
+#[tokio::test]
 async fn liquid_hours() {
     let mut client = match IBClient::connect(4002, 1, "", None).await {
         Ok(client) => client,
