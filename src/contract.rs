@@ -184,7 +184,9 @@ impl Contract {
         if self.sec_type == Some(SecType::Combo) {
             match &mut self.combo_legs {
                 Some(legs) => legs.push(leg),
-                None => ()
+                None => {
+                    self.combo_legs = Some(vec![leg]);
+                }
             };
         }
     }
